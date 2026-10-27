@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leftover</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Pixelify+Sans:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">Scene file</p>
+      <h1>Leftover</h1>
+    </div>
+    <dl class="scoreboard">
+      <div>
+        <dt>Score</dt>
+        <dd id="score">0</dd>
+      </div>
+      <div>
+        <dt>Misses</dt>
+        <dd id="misses">0/3</dd>
+      </div>
+      <div>
+        <dt>Room</dt>
+        <dd id="room-no">—</dd>
+      </div>
+      <div>
+        <dt>Time</dt>
+        <dd id="time">—</dd>
+      </div>
+      <div>
+        <dt>Best</dt>
+        <dd id="best">—</dd>
+      </div>
+    </dl>
+  </header>
+
+  <main>
+    <section class="stage" aria-labelledby="room-label">
+      <div class="stage-bar">
+        <h2 id="room-label">View</h2>
+        <p id="room-note">The file is not open.</p>
+      </div>
+      <div id="room" class="room" role="img" aria-label="Scene view"></div>
+    </section>
+
+    <section class="sheet" aria-labelledby="list-label">
+      <div class="stage-bar">
+        <h2 id="list-label">Outliner</h2>
+        <p>Click the object the view left out.</p>
+      </div>
+      <ul id="outliner" class="outliner"></ul>
+      <p id="gain" class="gain" aria-live="polite"></p>
+      <button id="next" type="button" hidden>Next room</button>
+    </section>
+  </main>
+
+  <div id="intro" class="ending">
+    <div class="ending-card intro-card">
+      <p class="eyebrow">Scene file</p>
+      <h2>Leftover</h2>
+      <p>The view finished the room. The outliner did not.</p>
+      <p>One object is still in the file, and it is not in the picture. Click its name. It steps into the room.</p>
+      <p>A wrong object costs 25. Three wrong, and the file closes.</p>
+      <p>Clear all eight rooms. The file will show you the one thing it kept.</p>
+      <p id="intro-best" hidden></p>
+      <button id="open-file" type="button">Open the file</button>
+    </div>
+  </div>
+
+  <div id="ending" class="ending" hidden>
+    <div class="ending-card">
+      <h2 id="ending-title">The file closed</h2>
+      <div id="ending-reward" class="reward" hidden></div>
+      <p id="ending-copy"></p>
+      <p id="ending-score"></p>
+      <button id="again" type="button">Open it again</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
