@@ -24,7 +24,7 @@ const SHADE = {
   id: "shade",
   name: "Shade",
   kind: "light",
-  action: "The shade was never parented to a room. It waited in the file.",
+  action: "I never parented the shade. I kept it until you closed the file.",
   svg: shade
 };
 
@@ -69,7 +69,7 @@ function showIntro() {
   introBest.textContent = best ? `Best close: ${best}.` : "";
   introEl.hidden = false;
   endingEl.hidden = true;
-  noteEl.textContent = "The file is not open.";
+  noteEl.textContent = "I have not opened the file for you.";
   drawBlank();
   drawTree([]);
   paintScore();
@@ -110,11 +110,9 @@ function nextRoom() {
   visible.forEach((item, index) => placement.set(cells[index], item));
   const empty = cells.filter((cell) => !placement.has(cell));
 
-  round = { leftover, placement, empty, solved: false };
+  round = { leftover, placement, empty, solved: false, shifted: "" };
   started = performance.now();
-  noteEl.textContent = count < 6
-    ? "One object is in the outliner and not in the view."
-    : "The room is fuller. One object is still undrawn.";
+  noteEl.textContent = openingLine();
   gainEl.textContent = "";
   gainEl.classList.remove("down");
   nextBtn.hidden = true;
@@ -122,6 +120,20 @@ function nextRoom() {
   drawRoom();
   drawTree(shuffle([...visible, leftover]));
   armTimer();
+}
+
+function openingLine() {
+  const lines = [
+    "I drew a small room. One name is only in the file.",
+    "I changed what the view is allowed to show.",
+    "I parented more of them. I am still holding one back.",
+    "The room is fuller because I wanted it fuller.",
+    "I am keeping the light low. The missing name is still in the list.",
+    "I will not wait as long in this room.",
+    "This is near the end of the house. I still have one name.",
+    "This is the last room I will draw. Then the shade."
+  ];
+  return lines[roomNo - 1] || lines[0];
 }
 
 function visibleCount() {
@@ -149,7 +161,7 @@ function armTimer() {
     timeEl.textContent = String(left);
     if (left === 0 && round && !round.solved) {
       clearInterval(timerId);
-      miss(null, "The view moved on.", true);
+      miss(null, "I moved on.", true);
     }
   };
   tick();
@@ -172,10 +184,14 @@ function drawRoom(extra) {
     const slot = document.createElement("div");
     slot.className = "cell";
     const item = round.placement.get(cell) || (extra && extra.cell === cell ? extra.item : null);
-    if (item) slot.append(prop(item, extra && extra.item === item));
+    if (item) slot.append(prop(item, extra && extra.item === item, round.shifted === item.id));
     roomEl.append(slot);
   }
-  roomEl.append(cameraMark());
+  const cam = cameraMark();
+  if (roomNo >= 6) cam.classList.add("drift");
+  roomEl.append(cam);
+  roomEl.classList.toggle("mood-late", roomNo >= 3 && roomNo < 6 && misses < 2);
+  roomEl.classList.toggle("mood-dark", roomNo >= 6 || misses >= 2);
 }
 
 function cameraMark() {
@@ -188,8 +204,9 @@ function cameraMark() {
 function drawTree(items) {
   listEl.replaceChildren();
   const scene = branch("Scene");
-  scene.ul.append(rigRow("Camera", "camera", "The camera is the rig. It is already in the view."));
-  scene.ul.append(rigRow("Key", "light", "The key is the rig. It is already in the view."));
+  scene.ul.append(rigRow("Camera", "camera", "The camera stays. I placed it."));
+  scene.ul.append(rigRow("Key", "light", "The key stays. I lit the room with it."));
+  scene.ul.append(rigRow("Agent", "agent", "I built this file. The object I kept is under Room."));
   const room = branch("Room");
   items.forEach((item) => room.ul.append(objectRow(item)));
   scene.ul.append(room.li);
@@ -255,7 +272,7 @@ function markShown(button) {
 function choose(item, button) {
   if (!round || round.solved || button.disabled) return;
   if (item !== round.leftover) {
-    miss(button, "Already in the view.");
+    miss(button, "");
     return;
   }
 
@@ -271,7 +288,8 @@ function choose(item, button) {
   paintScore();
   gainEl.classList.remove("down");
   gainEl.textContent = `+${gain}`;
-  noteEl.textContent = item.action;
+  noteEl.textContent = `I put the ${item.name} in the view. ${item.action}`;
+  touchRoom();
   lockList();
   button.classList.add("found");
   markShown(button);
@@ -289,16 +307,24 @@ function miss(button, message, closeRoom) {
   paintScore();
   gainEl.classList.add("down");
   gainEl.textContent = `-${PENALTY}`;
-  noteEl.textContent = message;
   if (button) {
     button.disabled = true;
     button.classList.add("miss");
     markShown(button);
+    const moved = agentShift();
+    noteEl.textContent = moved
+      ? `That one was already drawn. I moved the ${moved.name}.`
+      : "That one was already drawn.";
+    drawRoom();
+    touchRoom();
+  } else {
+    noteEl.textContent = message;
   }
   if (misses >= MISSES) {
     clearInterval(timerId);
     round.solved = true;
     lockList();
+    noteEl.textContent = "I am closing the file.";
     finish(false);
     return;
   }
@@ -308,10 +334,31 @@ function miss(button, message, closeRoom) {
     lockList();
     drawRoom({ item: round.leftover, cell: round.empty[0] });
     noteEl.textContent = `${message} It was the ${round.leftover.name}.`;
+    touchRoom();
     nextBtn.hidden = false;
     nextBtn.textContent = "Next room";
     nextBtn.focus();
   }
+}
+
+function agentShift() {
+  const cells = [...round.placement.keys()];
+  if (!cells.length || !round.empty.length) return null;
+  const from = cells[Math.floor(Math.random() * cells.length)];
+  const item = round.placement.get(from);
+  const toIndex = Math.floor(Math.random() * round.empty.length);
+  const to = round.empty[toIndex];
+  round.placement.delete(from);
+  round.placement.set(to, item);
+  round.empty[toIndex] = from;
+  round.shifted = item.id;
+  return item;
+}
+
+function touchRoom() {
+  roomEl.classList.remove("agent-touch");
+  void roomEl.offsetWidth;
+  roomEl.classList.add("agent-touch");
 }
 
 function lockList() {
@@ -354,16 +401,16 @@ function finish(cleared) {
     endingCopy.textContent = clears === 1
       ? SHADE.action
       : beat
-        ? "The shade is still here, and this close beat the last one."
-        : `The shade is still here. Best close stays ${previous}.`;
+        ? "The shade is still mine to show, and this close beat the last one."
+        : `The shade is still mine to show. Best close stays ${previous}.`;
     endingScore.textContent = `${score} points. ${CLEAR_BONUS} of that is for closing the file.`;
   } else {
     paintScore();
     const best = readNumber(BEST_KEY);
     endingTitle.textContent = "The file closed";
     endingCopy.textContent = best
-      ? `The shade stays in the file. Rooms cleared: ${foundRooms}. Best close is ${best}.`
-      : `The shade stays in the file. Rooms cleared: ${foundRooms}.`;
+      ? `I closed the file. The shade stays with me. Rooms cleared: ${foundRooms}. Best close is ${best}.`
+      : `I closed the file. The shade stays with me. Rooms cleared: ${foundRooms}.`;
     endingScore.textContent = `${score} points`;
   }
 
@@ -371,9 +418,9 @@ function finish(cleared) {
   againBtn.focus();
 }
 
-function prop(item, arriving) {
+function prop(item, arriving, shifted) {
   const el = document.createElement("div");
-  el.className = arriving ? "prop arrive" : "prop";
+  el.className = ["prop", arriving ? "arrive" : "", shifted ? "shifted" : ""].filter(Boolean).join(" ");
   el.innerHTML = item.svg();
   return el;
 }
