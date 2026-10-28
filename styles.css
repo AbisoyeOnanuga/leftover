@@ -107,6 +107,10 @@ main {
   font-size: 16px;
 }
 
+.agent-line { max-width: 42ch; text-align: right; }
+.who { color: var(--lamp); font-family: var(--display); margin-right: 6px; }
+.intro-rule { font-size: 15px; }
+
 .room {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -132,6 +136,23 @@ main {
   pointer-events: none;
 }
 
+.room.mood-late {
+  background: linear-gradient(180deg, #2a3a58 0 46%, #4a3428 46% 100%);
+}
+
+.room.mood-dark {
+  background: linear-gradient(180deg, #1a2233 0 46%, #2e241e 46% 100%);
+}
+
+.room.mood-dark::after { width: 54px; height: 54px; opacity: 0.75; }
+
+.room.agent-touch::after { animation: key-pulse 520ms ease-out; }
+
+@keyframes key-pulse {
+  from { transform: scale(1.35); opacity: 1; }
+  to { transform: none; opacity: 1; }
+}
+
 .cell {
   position: relative;
   z-index: 1;
@@ -143,7 +164,7 @@ main {
 .prop { width: 72px; height: 72px; display: grid; place-items: center; }
 .prop svg { width: 64px; height: 64px; overflow: visible; }
 
-.prop.arrive { animation: arrive 420ms ease-out; filter: drop-shadow(0 0 8px var(--lamp)); }
+.prop.arrive, .prop.shifted { animation: arrive 420ms ease-out; filter: drop-shadow(0 0 8px var(--lamp)); }
 
 @keyframes arrive {
   from { transform: translateY(12px) scale(0.8); opacity: 0; }
@@ -200,6 +221,7 @@ main {
 .kind.mesh { background: var(--ink); border-radius: 1px; }
 .kind.light { width: 8px; height: 8px; background: var(--lamp); transform: rotate(45deg); }
 .kind.camera { box-sizing: border-box; border: 1.5px solid var(--ink); border-radius: 2px; }
+.kind.agent { box-sizing: border-box; border: 1.5px solid var(--lamp); border-radius: 50%; background: transparent; }
 
 .eye { width: 16px; height: 10px; color: var(--muted); }
 .eye-slot { width: 16px; height: 10px; }
@@ -228,6 +250,8 @@ main {
   opacity: 0.85;
   pointer-events: none;
 }
+
+.rig-cam.drift { left: 22px; bottom: 18px; opacity: 0.55; }
 
 .gain { min-height: 24px; padding: 12px 14px 0; color: var(--lamp); font-size: 22px; }
 .gain.down { color: var(--miss); }
@@ -278,5 +302,5 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .prop.arrive { animation: none; }
+  .prop.arrive, .prop.shifted, .room.agent-touch::after { animation: none; }
 }
