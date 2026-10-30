@@ -58,8 +58,16 @@ let started = 0;
 let timerId = 0;
 let agentTimer = 0;
 let runOver = false;
+let beat = 0;
+let voiceToken = 0;
+let currentAudio = null;
 
-openBtn.addEventListener("click", startRun);
+const KIT_NAMES = KIT.map((item) => item.name).concat(["Shade", "Key", "Camera"]);
+
+openBtn.addEventListener("click", () => {
+  unlockAudio();
+  startRun();
+});
 nextBtn.addEventListener("click", onNext);
 againBtn.addEventListener("click", startRun);
 showIntro();
@@ -128,7 +136,6 @@ function nextRoom() {
     agentHidKey: false
   };
   started = performance.now();
-  noteEl.textContent = openingLine();
   gainEl.textContent = "";
   gainEl.classList.remove("down");
   nextBtn.hidden = true;
@@ -137,6 +144,8 @@ function nextRoom() {
   drawTree(shuffle([...visible, leftover]));
   paintEyes();
   armTimer();
+  queueHide();
+  say(openingLine(), "open", []);
   agentTimer = setTimeout(agentPlay, roomNo < 3 ? 4800 : 3200);
 }
 
@@ -322,7 +331,7 @@ function choose(item, button) {
   paintScore();
   gainEl.classList.remove("down");
   gainEl.textContent = `+${gain}`;
-  noteEl.textContent = `I put the ${item.name} in the view. ${item.action}`;
+  say(`I put the ${item.name} in the view. ${item.action}`, "found", publicNames([item]));
   touchRoom();
   lockList();
   button.classList.add("found");
@@ -344,23 +353,24 @@ function miss(button, message, closeRoom) {
     button.disabled = true;
     button.classList.add("miss");
     const moved = agentShift();
-    const stolen = misses < MISSES ? agentHide() : null;
-    if (stolen && moved) noteEl.textContent = `I moved the ${moved.name}, and I closed the ${stolen.name}.`;
-    else if (stolen) noteEl.textContent = `I closed the ${stolen.name}.`;
-    else if (moved) noteEl.textContent = `That one was already drawn. I moved the ${moved.name}.`;
-    else noteEl.textContent = "That one was already drawn.";
+    const stolen = misses < MISSES ? takeHide() : null;
+    const fallback = stolen && moved
+      ? `I moved the ${moved.name}, and I closed the ${stolen.item.name}.`
+      : stolen
+        ? `I closed the ${stolen.item.name}.`
+        : moved
+          ? `That one was already drawn. I moved the ${moved.name}.`
+          : "That one was already drawn.";
     drawRoom();
     paintEyes();
     touchRoom();
-  } else {
-    noteEl.textContent = message;
+    if (misses < MISSES) say(fallback, "wrong", publicNames([moved, stolen && stolen.item]));
   }
   if (misses >= MISSES) {
     clearInterval(timerId);
     clearTimeout(agentTimer);
     round.solved = true;
     lockList();
-    noteEl.textContent = "I am closing the file.";
     finish(false);
     return;
   }
@@ -369,7 +379,7 @@ function miss(button, message, closeRoom) {
     round.solved = true;
     lockList();
     drawRoom({ item: round.leftover, cell: round.empty[0] });
-    noteEl.textContent = `${message} It was the ${round.leftover.name}.`;
+    say(`${message} It was the ${round.leftover.name}.`, "timeout", publicNames([round.leftover]));
     touchRoom();
     nextBtn.hidden = false;
     nextBtn.textContent = "Next room";
@@ -383,23 +393,43 @@ function agentPlay() {
     agentHideKey();
     return;
   }
-  const stolen = agentHide();
-  if (!stolen) return;
-  noteEl.textContent = `I closed the ${stolen.name}. Open its eye if you want it back.`;
+  applyHide(takeHide());
+}
+
+function applyHide(taken) {
+  if (!taken) return;
+  const names = publicNames([taken.item]);
+  const fallback = `I closed the ${taken.item.name}. Open its eye if you want it back.`;
   drawRoom();
   paintEyes();
   touchRoom();
+  if (taken.line && lineAllowed(taken.line, names)) {
+    const token = ++beat;
+    noteEl.textContent = taken.line;
+    speak(token, taken.line);
+    return;
+  }
+  say(fallback, "taunt", names);
 }
 
-function agentHide() {
+function takeHide() {
   if (!round || round.solved || round.agentActs >= 2) return null;
-  const showing = [...round.placement.values()].filter((item) => !round.concealed.has(item.id));
+  const showing = showingItems();
   if (showing.length <= 2) return null;
-  const item = showing[Math.floor(Math.random() * showing.length)];
+  const ticket = round.hideTicket;
+  if (ticket) ticket.state = "spent";
+  let item = null;
+  let line = null;
+  if (ticket && ticket.id) {
+    item = showing.find((object) => object.id === ticket.id) || null;
+    line = item ? ticket.line : null;
+  }
+  if (!item) item = showing[Math.floor(Math.random() * showing.length)];
   round.concealed.add(item.id);
   round.agentHid.add(item.id);
   round.agentActs += 1;
-  return item;
+  queueHide();
+  return { item, line };
 }
 
 function agentHideKey() {
@@ -407,7 +437,9 @@ function agentHideKey() {
   round.keyHidden = true;
   round.agentHidKey = true;
   round.agentActs += 1;
+  const token = ++beat;
   noteEl.textContent = "I closed the key. Open that eye when you want the light.";
+  speak(token, noteEl.textContent);
   drawRoom();
   paintEyes();
   touchRoom();
@@ -418,50 +450,46 @@ function toggleFlag(id) {
   if (id === "key") {
     const opening = round.keyHidden;
     round.keyHidden = !round.keyHidden;
-    noteEl.textContent = round.keyHidden ? "The key is hidden." : "The key is back.";
     drawRoom();
     paintEyes();
+    say(round.keyHidden ? "The key is hidden." : "The key is back.", "playerHide", publicNames([{ id: "key", name: "Key" }]));
     if (opening && round.agentHidKey) answerAgent();
     return;
   }
   if (id === "camera") {
     round.cameraHidden = !round.cameraHidden;
-    noteEl.textContent = round.cameraHidden ? "The camera is hidden." : "The camera is back in the view.";
     drawRoom();
     paintEyes();
+    say(round.cameraHidden ? "The camera is hidden." : "The camera is back in the view.", "playerHide", publicNames([{ id: "camera", name: "Camera" }]));
     return;
   }
   const item = itemById(id);
   if (!item || item === round.leftover) {
     round.leftoverShut = !round.leftoverShut;
-    noteEl.textContent = "I am holding that one out of the picture. Click the name.";
     paintEyes();
+    say("I am holding that one out of the picture. Click the name.", "hold", []);
     return;
   }
   if (round.concealed.has(id)) {
     round.concealed.delete(id);
-    noteEl.textContent = `The ${item.name} is back in the view.`;
     drawRoom();
     paintEyes();
+    say(`The ${item.name} is back in the view.`, "reopen", publicNames([item]));
     if (round.agentHid.has(id)) answerAgent();
     return;
   }
   round.concealed.add(id);
-  noteEl.textContent = `The ${item.name} is hidden.`;
   drawRoom();
   paintEyes();
+  say(`The ${item.name} is hidden.`, "playerHide", publicNames([item]));
 }
 
 function answerAgent() {
   if (!round || round.solved || round.agentActs >= 2) return;
   clearTimeout(agentTimer);
   agentTimer = setTimeout(() => {
-    const stolen = agentHide();
-    if (!stolen || !round || round.solved) return;
-    noteEl.textContent = `I closed the ${stolen.name}. Open its eye if you want it back.`;
-    drawRoom();
-    paintEyes();
-    touchRoom();
+    if (!round || round.solved) return;
+    applyHide(takeHide());
   }, 1400);
 }
 
@@ -536,9 +564,9 @@ function finish(cleared) {
     score += CLEAR_BONUS;
     const clears = readNumber(CLEARS_KEY) + 1;
     const previous = readNumber(BEST_KEY);
-    const beat = score > previous;
+    const beatBest = score > previous;
     writeNumber(CLEARS_KEY, clears);
-    if (beat) writeNumber(BEST_KEY, score);
+    if (beatBest) writeNumber(BEST_KEY, score);
     paintScore();
     const figure = document.createElement("div");
     figure.innerHTML = SHADE.svg();
@@ -546,21 +574,23 @@ function finish(cleared) {
     caption.textContent = SHADE.name;
     endingReward.append(figure, caption);
     endingReward.hidden = false;
-    endingTitle.textContent = clears === 1 ? "The file kept this" : beat ? "A new best" : "You closed the file";
-    endingCopy.textContent = clears === 1
+    endingTitle.textContent = clears === 1 ? "The file kept this" : beatBest ? "A new best" : "You closed the file";
+    endingScore.textContent = `${score} points. ${CLEAR_BONUS} of that is for closing the file.`;
+    const fallback = clears === 1
       ? SHADE.action
-      : beat
+      : beatBest
         ? "The shade is still mine to show, and this close beat the last one."
         : `The shade is still mine to show. Best close stays ${previous}.`;
-    endingScore.textContent = `${score} points. ${CLEAR_BONUS} of that is for closing the file.`;
+    say(fallback, "shade", publicNames([SHADE]), endingCopy);
   } else {
     paintScore();
     const best = readNumber(BEST_KEY);
     endingTitle.textContent = "The file closed";
-    endingCopy.textContent = best
+    endingScore.textContent = `${score} points`;
+    const fallback = best
       ? `I closed the file. The shade stays with me. Rooms cleared: ${foundRooms}. Best close is ${best}.`
       : `I closed the file. The shade stays with me. Rooms cleared: ${foundRooms}.`;
-    endingScore.textContent = `${score} points`;
+    say(fallback, "close", [], endingCopy);
   }
 
   endingEl.hidden = false;
@@ -589,6 +619,106 @@ function writeNumber(key, value) {
   } catch {
     /* The reward still shows for this sitting. */
   }
+}
+
+function publicNames(items) {
+  return items.filter((item) => item && item.id && item.name).map((item) => ({ id: item.id, name: item.name }));
+}
+
+function showingItems() {
+  if (!round) return [];
+  return [...round.placement.values()].filter((item) => !round.concealed.has(item.id));
+}
+
+function lineAllowed(line, names) {
+  if (typeof line !== "string") return false;
+  const text = line.trim();
+  if (!text || text.length > 180) return false;
+  const allowed = new Set(names.map((item) => item.name.toLowerCase()));
+  const named = [];
+  for (const name of KIT_NAMES) {
+    if (!new RegExp(`\\b${name}\\b`, "i").test(text)) continue;
+    if (!allowed.has(name.toLowerCase())) return false;
+    named.push(name);
+  }
+  if (/\bkept\b/i.test(text) && named.length) return false;
+  if (/\b(you|your|yourself|breath|remembers|every|whispered|scream|regret|echo|darkness)\b/i.test(text)) return false;
+  if (!/^I\b/.test(text)) return false;
+  if (round && round.leftover && !allowed.has(round.leftover.name.toLowerCase())) {
+    if (new RegExp(`\\b${round.leftover.name}\\b`, "i").test(text)) return false;
+  }
+  return true;
+}
+
+function ask(event, names) {
+  const body = { event, names };
+  if (event === "hide") body.allowedIds = names.map((item) => item.id);
+  return fetch("/act", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then((response) => (response.ok ? response.json() : null));
+}
+
+function say(fallback, event, names, target) {
+  const el = target || noteEl;
+  const token = ++beat;
+  const allowed = names || [];
+  el.textContent = fallback;
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  ask(event, allowed).then((data) => {
+    if (token !== beat) return;
+    const line = data && data.line && lineAllowed(data.line, allowed) ? data.line : fallback;
+    el.textContent = line;
+    speak(token, line);
+  }).catch(() => {
+    if (token === beat) speak(token, fallback);
+  });
+}
+
+function speak(token, text) {
+  voiceToken = token;
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  fetch("/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text })
+  }).then((response) => (response.ok && response.status !== 204 ? response.blob() : null)).then((blob) => {
+    if (!blob || !blob.size || token !== voiceToken) return;
+    const audio = new Audio(URL.createObjectURL(blob));
+    currentAudio = audio;
+    audio.play().catch(() => {});
+  }).catch(() => {});
+}
+
+function unlockAudio() {
+  const silent = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=");
+  silent.play().catch(() => {});
+}
+
+function queueHide() {
+  if (!round || round.solved || round.agentActs >= 2) return;
+  if (round.hideTicket && round.hideTicket.state === "pending") return;
+  const names = publicNames(showingItems());
+  if (names.length <= 2) return;
+  const ticket = { state: "pending", id: null, line: null };
+  round.hideTicket = ticket;
+  ask("hide", names).then((data) => {
+    if (ticket.state !== "pending") return;
+    if (data && names.some((item) => item.id === data.id)) {
+      ticket.id = data.id;
+      ticket.line = data.line && lineAllowed(data.line, names) ? data.line : null;
+    }
+    ticket.state = "ready";
+  }).catch(() => {
+    if (ticket.state === "pending") ticket.state = "ready";
+  });
 }
 
 function shuffle(items) {

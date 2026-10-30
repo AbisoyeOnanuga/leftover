@@ -2,6 +2,6 @@
 
 A scene file is generated in the browser. The view draws the room. The outliner still holds one object the view left out. Click that name and it steps into the room. A wrong object costs points. A run ends after eight rooms, or after three misses. Closing the file shows the shade it kept, and the best close stays in the browser.
 
-Open [index.html](index.html) in a browser. Planning notes live in `hacktoberfest-week4/`. `.gitignore` keeps that folder out of any later commit.
+Run `python server.py` and open http://127.0.0.1:8765/. The page asks that server which eye to close. Planning notes live in `hacktoberfest-week4/`. `.gitignore` keeps that folder out of any later commit. Copy `.env.example` to `.env` when the agent should speak.
 
 [Hacktoberfest Open-Source AI Challenge: Week 4](https://dev.to/challenges/hacktoberfest-week4-2026-10-26). Theme: **Ghost in the Machine**. The challenge page says submissions are due October 31, 2026, at 11:59 PM PDT.
