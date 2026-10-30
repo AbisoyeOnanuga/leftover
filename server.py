@@ -1,8 +1,11 @@
 """Serve Leftover and POST /act.
 
-The browser never calls Ollama or ElevenLabs. A hide asks gemma3:4b for one
-id from the list the page sent, plus one sentence. Other events ask for the
-sentence only. The page does not send the leftover.
+The browser never calls a model or a voice service. A hide asks the model for
+one id from the list the page sent, plus one sentence. Other events ask for
+the sentence only. The page does not send the leftover.
+
+Optional tools are environment values. A blank value skips that tool, so
+another one is a blank key in .env.example and a check beside these.
 """
 
 import json
@@ -91,8 +94,13 @@ def parse_json(raw):
             return None
 
 
+def env_value(name):
+    return os.environ.get(name, "").strip()
+
+
 def gemma(user):
-    url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/") + "/api/chat"
+    # Blank OLLAMA_URL means the public local Ollama port, not an account host.
+    url = (env_value("OLLAMA_URL") or "http://127.0.0.1:11434").rstrip("/") + "/api/chat"
     body = {
         "model": os.environ.get("OLLAMA_MODEL", "gemma3:4b"),
         "stream": False,
@@ -213,13 +221,13 @@ def write_log(entry):
 
 
 def speak_mp3(text):
-    key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
-    if not key or not isinstance(text, str):
+    key = env_value("ELEVENLABS_API_KEY")
+    voice = env_value("ELEVENLABS_VOICE_ID")
+    if not key or not voice or not isinstance(text, str):
         return None
     text = " ".join(text.split())
     if not text or len(text) > 180:
         return None
-    voice = os.environ.get("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb").strip()
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
     body = {
         "text": text,
