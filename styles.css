@@ -97,9 +97,10 @@ main {
 
 .stage-bar {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   gap: 12px;
-  align-items: baseline;
+  align-items: center;
   padding: 14px 14px 0;
 }
 
@@ -109,7 +110,7 @@ main {
   font-size: 16px;
 }
 
-.agent-line { max-width: 42ch; text-align: right; }
+.agent-line { max-width: 42ch; margin-left: auto; text-align: right; }
 .who { color: var(--lamp); font-family: var(--display); margin-right: 6px; }
 .intro-rule { font-size: 15px; }
 
@@ -122,22 +123,11 @@ main {
   background: var(--wall);
   touch-action: none;
   cursor: grab;
+  user-select: none;
 }
 
 .viewport.camera-shut { cursor: default; }
 .viewport:active:not(.camera-shut) { cursor: grabbing; }
-
-.view-tag {
-  position: absolute;
-  z-index: 3;
-  top: 8px;
-  left: 10px;
-  margin: 0;
-  color: var(--lamp);
-  font-family: var(--display);
-  font-size: 14px;
-  pointer-events: none;
-}
 
 .gimbal {
   position: absolute;
@@ -154,10 +144,6 @@ main {
 .viewport.drift .gimbal { opacity: 0.55; }
 
 #frame {
-  position: absolute;
-  z-index: 3;
-  top: 8px;
-  right: 8px;
   margin: 0;
   padding: 4px 8px;
   border: 3px solid #0d0e12;
@@ -165,18 +151,19 @@ main {
   color: var(--lamp);
   font: 700 14px/1 var(--display);
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .room {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: 8px;
+  gap: 12px;
   position: absolute;
   left: 0;
   top: 0;
-  width: 200%;
-  height: 190%;
+  width: 128%;
+  height: 118%;
   margin: 0;
   padding: 18px;
   background: linear-gradient(180deg, var(--wall) 0 46%, var(--floor) 46% 100%);

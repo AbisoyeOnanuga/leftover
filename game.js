@@ -56,6 +56,9 @@ const voiceBox = document.querySelector("#set-voice");
 const soundBox = document.querySelector("#set-sound");
 const voiceLevel = document.querySelector("#voice-level");
 const soundLevel = document.querySelector("#sound-level");
+const voiceStatus = document.querySelector("#voice-status");
+const introSpeechEl = document.querySelector("#intro-speech");
+const INTRO_SPEECH = introSpeechEl ? introSpeechEl.textContent.trim() : "";
 const VOICE_KEY = "leftover-voice";
 const SOUND_KEY = "leftover-sound";
 const VOICE_LEVEL_KEY = "leftover-voice-level";
@@ -78,18 +81,27 @@ let audioCtx = null;
 let aimX = 0;
 let aimY = 0;
 let drag = null;
+let keys = new Set();
+let panClock = 0;
+let skipOpenLine = false;
 
 const KIT_NAMES = KIT.map((item) => item.name).concat(["Shade", "Key", "Camera"]);
 
 openBtn.addEventListener("click", () => {
   unlockAudio();
+  skipOpenLine = true;
+  speak(++beat, INTRO_SPEECH);
   startRun();
 });
 frameBtn.addEventListener("click", () => {
   openingShot();
   playCue("frame");
 });
-settingsOpen.addEventListener("click", () => settingsEl.showModal());
+settingsOpen.addEventListener("click", () => {
+  keys.clear();
+  paintVoiceStatus();
+  settingsEl.showModal();
+});
 voiceBox.checked = prefOn(VOICE_KEY);
 soundBox.checked = prefOn(SOUND_KEY);
 voiceLevel.value = String(Math.round(prefLevel(VOICE_LEVEL_KEY, 0.85) * 100));
@@ -128,7 +140,11 @@ viewportEl.addEventListener("pointermove", (event) => {
 });
 viewportEl.addEventListener("pointerup", endDrag);
 viewportEl.addEventListener("pointercancel", endDrag);
+window.addEventListener("keydown", onLookKey);
+window.addEventListener("keyup", (event) => keys.delete(event.code));
+window.addEventListener("blur", () => keys.clear());
 mountGimbal();
+paintVoiceStatus();
 nextBtn.addEventListener("click", onNext);
 againBtn.addEventListener("click", startRun);
 showIntro();
@@ -178,10 +194,10 @@ function nextRoom() {
   const deck = shuffle(KIT);
   const visible = deck.slice(0, count);
   const leftover = deck[count];
-  const cells = shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  const cells = clusterCells(count);
   const placement = new Map();
   visible.forEach((item, index) => placement.set(cells[index], item));
-  const empty = cells.filter((cell) => !placement.has(cell));
+  const empty = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].filter((cell) => !placement.has(cell));
 
   round = {
     leftover,
@@ -208,7 +224,12 @@ function nextRoom() {
   armTimer();
   queueHide();
   placeCamera();
-  say(openingLine(), "open", []);
+  if (skipOpenLine && roomNo === 1) {
+    skipOpenLine = false;
+    noteEl.textContent = INTRO_SPEECH;
+  } else {
+    say(openingLine(), "open", []);
+  }
   agentTimer = setTimeout(agentPlay, roomNo < 3 ? 4800 : 3200);
 }
 
@@ -230,6 +251,15 @@ function visibleCount() {
   if (roomNo <= 2) return 4;
   if (roomNo <= 5) return 6;
   return 8;
+}
+
+function clusterCells(count) {
+  const packs = {
+    4: [1, 2, 5, 6],
+    6: [1, 2, 4, 5, 6, 9],
+    8: [0, 1, 2, 4, 5, 6, 8, 9]
+  };
+  return shuffle(packs[count] || packs[4]);
 }
 
 function timeLimit() {
@@ -734,6 +764,75 @@ function endDrag(event) {
   drag = null;
 }
 
+function lookDirs() {
+  return {
+    KeyW: [0, 1],
+    ArrowUp: [0, 1],
+    KeyS: [0, -1],
+    ArrowDown: [0, -1],
+    KeyA: [1, 0],
+    ArrowLeft: [1, 0],
+    KeyD: [-1, 0],
+    ArrowRight: [-1, 0]
+  };
+}
+
+function onLookKey(event) {
+  if (settingsEl.open || !introEl.hidden) return;
+  if (!lookDirs()[event.code]) return;
+  if (round && round.cameraHidden) return;
+  if (event.target && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
+  event.preventDefault();
+  const idle = keys.size === 0;
+  keys.add(event.code);
+  if (idle) {
+    playCue("look");
+    panClock = 0;
+    requestAnimationFrame(panStep);
+  }
+}
+
+function panStep(now) {
+  if (!keys.size) {
+    panClock = 0;
+    return;
+  }
+  const dt = panClock ? Math.min(32, now - panClock) : 16;
+  panClock = now;
+  const dirs = lookDirs();
+  let x = 0;
+  let y = 0;
+  keys.forEach((code) => {
+    const step = dirs[code];
+    if (!step) return;
+    x += step[0];
+    y += step[1];
+  });
+  if (x || y) setAim(aimX + x * 0.42 * dt, aimY + y * 0.42 * dt);
+  requestAnimationFrame(panStep);
+}
+
+function paintVoiceStatus() {
+  if (!voiceStatus) return;
+  fetch("/voice").then((response) => response.json()).then((data) => {
+    if (!data.ready) {
+      voiceStatus.textContent = "Voice is off until .env has an API key and a voice id, then restart the server.";
+      return;
+    }
+    if (data.error === "401") {
+      voiceStatus.textContent = "ElevenLabs did not accept the API key. Create a new key in the ElevenLabs dashboard, put it in .env, and restart the server.";
+      return;
+    }
+    if (data.error) {
+      voiceStatus.textContent = "Voice is not speaking yet. Check the key and restart the server.";
+      return;
+    }
+    voiceStatus.textContent = "Voice is ready. Open the file to hear the agent.";
+  }).catch(() => {
+    voiceStatus.textContent = "";
+  });
+}
+
 function placeCamera() {
   openingShot();
 }
@@ -875,7 +974,7 @@ function showingItems() {
 function lineAllowed(line, names) {
   if (typeof line !== "string") return false;
   const text = line.trim();
-  if (!text || text.length > 180) return false;
+  if (!text || text.length > 240) return false;
   const allowed = new Set(names.map((item) => item.name.toLowerCase()));
   const named = [];
   for (const name of KIT_NAMES) {

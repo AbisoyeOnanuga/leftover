@@ -27,11 +27,13 @@ NAMES = (
 )
 NAME_BY_ID = {name.lower(): name for name in NAMES}
 SYSTEM = (
-    "You are the agent of a scene file. Reply with one JSON object only. "
-    "The line is one short sentence, spooky and taunting, about the file, the room, or a listed object. "
+    "You are the agent of a scene file, speaking aloud. Reply with one JSON object only. "
+    "The line is one or two complete spoken sentences, not a fragment, not a caption. "
+    "Keep it under forty words. Spooky and taunting, about the file, the room, or a listed object. "
     "Do not address anyone. Do not say you, your, or breath. Do not say which object was kept. "
     "Do not name an object that is not in the list you are given."
 )
+VOICE = {"error": ""}
 
 
 def load_env():
@@ -43,7 +45,12 @@ def load_env():
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        val = value.strip().strip('"').strip("'")
+        name = key.strip()
+        if val:
+            os.environ[name] = val
+        else:
+            os.environ.setdefault(name, "")
 
 
 def mentions(line):
@@ -58,7 +65,7 @@ def line_ok(line, allowed_names):
     if not isinstance(line, str):
         return False
     text = " ".join(line.split())
-    if not text or len(text) > 180:
+    if not text or len(text) > 240:
         return False
     if len(re.findall(r"[.!?]", text)) > 2:
         return False
@@ -110,7 +117,7 @@ def gemma(user):
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": user},
         ],
-        "options": {"temperature": 0.7, "num_predict": 48},
+        "options": {"temperature": 0.7, "num_predict": 90},
     }
     request = urllib.request.Request(
         url,
@@ -130,8 +137,7 @@ def prompt_for(event, names, allowed_ids):
         random.shuffle(order)
         return (
             f"Ids: {', '.join(order)}. Choose one id. "
-            "line must start with I closed the, then that object's name. "
-            "Then say the file moved or the room went dim. "
+            "Write one or two complete sentences that name that object and say the eye is closed. "
             "Do not use remembers, every, whispered, scream, regret, echo, or darkness. "
             "Do not say you, your, breath, or kept. JSON keys are id and line."
         )
@@ -151,7 +157,7 @@ def prompt_for(event, names, allowed_ids):
     if not cue:
         return None
     return (
-        f"{cue} line must start with I. One short taunt about the file. "
+        f"{cue} Write one or two complete spoken sentences that start with I. "
         "Do not use remembers, every, whispered, scream, regret, echo, or darkness. "
         "Do not say you, your, breath, or kept. "
         f"You may name only: {listed}. JSON key is line."
@@ -193,8 +199,6 @@ def act(body):
             named = mentions(line)
             if any(name.lower() != picked for name in named):
                 line = None
-            elif not re.match(r"I closed the\b", line.strip(), re.I):
-                line = None
             elif not re.search(rf"\b{re.escape(NAME_BY_ID[picked])}\b", line, re.I):
                 line = None
     accepted = line if line_ok(line, names) else None
@@ -226,7 +230,7 @@ def speak_mp3(text):
     if not key or not voice or not isinstance(text, str):
         return None
     text = " ".join(text.split())
-    if not text or len(text) > 180:
+    if not text or len(text) > 280:
         return None
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
     body = {
@@ -243,8 +247,14 @@ def speak_mp3(text):
             "Accept": "audio/mpeg",
         },
     )
-    with urllib.request.urlopen(request, timeout=20) as response:
-        return response.read()
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            VOICE["error"] = ""
+            return response.read()
+    except urllib.error.HTTPError as err:
+        VOICE["error"] = str(err.code)
+        write_log({"event": "speak", "status": err.code, "chars": len(text)})
+        return None
 
 
 def warmup():
@@ -259,6 +269,19 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path in ("", "/"):
             path = "/index.html"
+        if path == "/voice":
+            payload = {
+                "ready": bool(env_value("ELEVENLABS_API_KEY") and env_value("ELEVENLABS_VOICE_ID")),
+                "error": VOICE.get("error") or "",
+            }
+            data = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+            return
         candidate = (ROOT / path.lstrip("/")).resolve()
         if candidate.parent != ROOT or candidate.suffix.lower() not in {".html", ".js", ".css"} or not candidate.is_file():
             self.send_error(404)
@@ -300,6 +323,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 audio = speak_mp3(text)
             except (urllib.error.URLError, TimeoutError, OSError):
+                VOICE["error"] = "network"
                 audio = None
             if not audio:
                 self.send_response(204)

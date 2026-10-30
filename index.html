@@ -44,11 +44,10 @@
     <section class="stage" aria-labelledby="room-label">
       <div class="stage-bar">
         <h2 id="room-label">Front</h2>
+        <button id="frame" type="button">Frame</button>
         <p class="agent-line"><span class="who">Agent</span> <span id="room-note">The file is not open.</span></p>
       </div>
       <div id="viewport" class="viewport">
-        <p class="view-tag">Front</p>
-        <button id="frame" type="button">Frame</button>
         <div id="gimbal" class="gimbal" aria-hidden="true"></div>
         <div id="room" class="room" role="img" aria-label="Front view through the camera"></div>
       </div>
@@ -77,7 +76,8 @@
       <label class="slider">Effects
         <input id="sound-level" type="range" min="0" max="100" value="80">
       </label>
-      <p class="set-note">Drag looks across the set. The set is larger than this front shot. Frame returns to the opening shot. Every drawn object is in the set. The one I kept is not.</p>
+      <p id="voice-status" class="set-note"></p>
+      <p class="set-note">Drag or WASD looks across the set. Frame returns to the opening shot. The objects stay close enough to find. The one I kept is not in the picture.</p>
       <button value="close">Close</button>
     </form>
   </dialog>
@@ -86,9 +86,8 @@
     <div class="ending-card intro-card">
       <p class="eyebrow">Agent</p>
       <h2>I kept one object.</h2>
-      <p>I finished this room before you opened the file. The outliner is everything I parented. This is the camera's front shot, and the set is larger than the shot. Drag to look.</p>
-      <p>Click the name that is not in the picture. That choice is yours. I will put the object in the room.</p>
-      <p class="intro-rule">The eye hides and shows what is already drawn. I will close some. Opening an eye is free, and it will not produce the object I kept. Click that name. A wrong name costs 25, and I move the room. Three wrong, and I close the file. Eight rooms, and I show you the shade.</p>
+      <p id="intro-speech">I finished this room before you opened the file, and the outliner still holds everything I parented. This front shot is only what I chose to draw, so find the name that is not in the picture.</p>
+      <p class="intro-rule">The eye hides and shows what is already drawn. I will close some. Opening an eye is free, and it will not produce the object I kept. Click that name. A wrong name costs 25, and I move the room. Three wrong, and I close the file. Eight rooms, and I show you the shade. Drag or WASD to look.</p>
       <p id="intro-best" hidden></p>
       <button id="open-file" type="button">Open the file</button>
     </div>
