@@ -47,6 +47,16 @@ const endingReward = document.querySelector("#ending-reward");
 const endingCopy = document.querySelector("#ending-copy");
 const endingScore = document.querySelector("#ending-score");
 const againBtn = document.querySelector("#again");
+const viewportEl = document.querySelector("#viewport");
+const gimbalEl = document.querySelector("#gimbal");
+const frameBtn = document.querySelector("#frame");
+const settingsOpen = document.querySelector("#settings-open");
+const settingsEl = document.querySelector("#settings");
+const voiceBox = document.querySelector("#set-voice");
+const soundBox = document.querySelector("#set-sound");
+const VOICE_KEY = "leftover-voice";
+const SOUND_KEY = "leftover-sound";
+const AIM = 22;
 
 let score = 0;
 let streak = 0;
@@ -61,6 +71,10 @@ let runOver = false;
 let beat = 0;
 let voiceToken = 0;
 let currentAudio = null;
+let audioCtx = null;
+let aimX = 0;
+let aimY = 0;
+let drag = null;
 
 const KIT_NAMES = KIT.map((item) => item.name).concat(["Shade", "Key", "Camera"]);
 
@@ -68,6 +82,38 @@ openBtn.addEventListener("click", () => {
   unlockAudio();
   startRun();
 });
+frameBtn.addEventListener("click", () => setAim(0, 0));
+settingsOpen.addEventListener("click", () => settingsEl.showModal());
+voiceBox.checked = prefOn(VOICE_KEY);
+soundBox.checked = prefOn(SOUND_KEY);
+voiceBox.addEventListener("change", () => {
+  writePref(VOICE_KEY, voiceBox.checked);
+  if (!voiceBox.checked && currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+});
+soundBox.addEventListener("change", () => {
+  writePref(SOUND_KEY, soundBox.checked);
+  if (soundBox.checked) playCue("eye");
+});
+viewportEl.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("button")) return;
+  if (round && round.cameraHidden) return;
+  drag = { x: event.clientX, y: event.clientY, ax: aimX, ay: aimY, id: event.pointerId };
+  try {
+    viewportEl.setPointerCapture(event.pointerId);
+  } catch {
+    /* The move still follows the pointer. */
+  }
+});
+viewportEl.addEventListener("pointermove", (event) => {
+  if (!drag || event.pointerId !== drag.id) return;
+  setAim(drag.ax + event.clientX - drag.x, drag.ay + event.clientY - drag.y);
+});
+viewportEl.addEventListener("pointerup", endDrag);
+viewportEl.addEventListener("pointercancel", endDrag);
+mountGimbal();
 nextBtn.addEventListener("click", onNext);
 againBtn.addEventListener("click", startRun);
 showIntro();
@@ -145,6 +191,7 @@ function nextRoom() {
   paintEyes();
   armTimer();
   queueHide();
+  placeCamera();
   say(openingLine(), "open", []);
   agentTimer = setTimeout(agentPlay, roomNo < 3 ? 4800 : 3200);
 }
@@ -202,7 +249,7 @@ function drawBlank() {
     slot.className = "cell";
     roomEl.append(slot);
   }
-  roomEl.append(cameraMark());
+  paintCamera();
 }
 
 function drawRoom(extra) {
@@ -215,11 +262,7 @@ function drawRoom(extra) {
     if (item && !hidden) slot.append(prop(item, extra && extra.item === item, round.shifted === item.id));
     roomEl.append(slot);
   }
-  if (!round.cameraHidden) {
-    const cam = cameraMark();
-    if (roomNo >= 6) cam.classList.add("drift");
-    roomEl.append(cam);
-  }
+  paintCamera();
   const dark = round.keyHidden || roomNo >= 6 || misses >= 2;
   roomEl.classList.toggle("key-off", round.keyHidden);
   roomEl.classList.toggle("mood-late", !dark && roomNo >= 3);
@@ -331,6 +374,7 @@ function choose(item, button) {
   paintScore();
   gainEl.classList.remove("down");
   gainEl.textContent = `+${gain}`;
+  playCue("right");
   say(`I put the ${item.name} in the view. ${item.action}`, "found", publicNames([item]));
   touchRoom();
   lockList();
@@ -364,7 +408,10 @@ function miss(button, message, closeRoom) {
     drawRoom();
     paintEyes();
     touchRoom();
-    if (misses < MISSES) say(fallback, "wrong", publicNames([moved, stolen && stolen.item]));
+    if (misses < MISSES) {
+      playCue("wrong");
+      say(fallback, "wrong", publicNames([moved, stolen && stolen.item]));
+    }
   }
   if (misses >= MISSES) {
     clearInterval(timerId);
@@ -379,6 +426,7 @@ function miss(button, message, closeRoom) {
     round.solved = true;
     lockList();
     drawRoom({ item: round.leftover, cell: round.empty[0] });
+    playCue("miss");
     say(`${message} It was the ${round.leftover.name}.`, "timeout", publicNames([round.leftover]));
     touchRoom();
     nextBtn.hidden = false;
@@ -447,6 +495,7 @@ function agentHideKey() {
 
 function toggleFlag(id) {
   if (!round || round.solved || runOver) return;
+  playCue("eye");
   if (id === "key") {
     const opening = round.keyHidden;
     round.keyHidden = !round.keyHidden;
@@ -458,6 +507,7 @@ function toggleFlag(id) {
   }
   if (id === "camera") {
     round.cameraHidden = !round.cameraHidden;
+    if (round.cameraHidden) setAim(0, 0);
     drawRoom();
     paintEyes();
     say(round.cameraHidden ? "The camera is hidden." : "The camera is back in the view.", "playerHide", publicNames([{ id: "camera", name: "Camera" }]));
@@ -594,6 +644,7 @@ function finish(cleared) {
   }
 
   endingEl.hidden = false;
+  playCue(cleared ? "win" : "miss");
   againBtn.focus();
 }
 
@@ -619,6 +670,106 @@ function writeNumber(key, value) {
   } catch {
     /* The reward still shows for this sitting. */
   }
+}
+
+function prefOn(key) {
+  try {
+    return localStorage.getItem(key) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function writePref(key, on) {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    /* This sitting keeps the toggle. */
+  }
+}
+
+function setAim(x, y) {
+  aimX = Math.max(-AIM, Math.min(AIM, x));
+  aimY = Math.max(-AIM, Math.min(AIM, y));
+  viewportEl.style.setProperty("--aim-x", `${aimX}px`);
+  viewportEl.style.setProperty("--aim-y", `${aimY}px`);
+}
+
+function endDrag(event) {
+  if (!drag || (event && event.pointerId !== drag.id)) return;
+  drag = null;
+}
+
+function placeCamera() {
+  if (round && round.cameraHidden) {
+    setAim(0, 0);
+    return;
+  }
+  if (roomNo >= 6) setAim(14, -8);
+  else setAim(0, 0);
+}
+
+function paintCamera() {
+  const shut = Boolean(round && round.cameraHidden);
+  viewportEl.classList.toggle("camera-shut", shut);
+  viewportEl.classList.toggle("drift", Boolean(round) && roomNo >= 6 && !shut);
+}
+
+function mountGimbal() {
+  const mark = cameraMark();
+  mark.style.position = "static";
+  gimbalEl.replaceChildren(mark);
+}
+
+function audioContext() {
+  try {
+    if (!audioCtx) audioCtx = new AudioContext();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  } catch {
+    return null;
+  }
+}
+
+function tone(ctx, when, freq, duration, type, level) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, when);
+  gain.gain.setValueAtTime(level || 0.05, when);
+  gain.gain.exponentialRampToValueAtTime(0.001, when + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(when);
+  osc.stop(when + duration + 0.02);
+}
+
+function playCue(kind) {
+  if (!prefOn(SOUND_KEY)) return;
+  const ctx = audioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  if (kind === "right") {
+    tone(ctx, now, 523, 0.07, "sine");
+    tone(ctx, now + 0.08, 784, 0.09, "sine");
+    return;
+  }
+  if (kind === "win") {
+    tone(ctx, now, 523, 0.08, "sine");
+    tone(ctx, now + 0.09, 659, 0.08, "sine");
+    tone(ctx, now + 0.18, 784, 0.12, "sine");
+    return;
+  }
+  if (kind === "wrong") {
+    tone(ctx, now, 180, 0.1, "square", 0.03);
+    return;
+  }
+  if (kind === "miss") {
+    tone(ctx, now, 220, 0.08, "triangle", 0.04);
+    tone(ctx, now + 0.09, 110, 0.14, "triangle", 0.04);
+    return;
+  }
+  tone(ctx, now, 740, 0.04, "sine", 0.04);
 }
 
 function publicNames(items) {
@@ -680,6 +831,7 @@ function say(fallback, event, names, target) {
 }
 
 function speak(token, text) {
+  if (!prefOn(VOICE_KEY)) return;
   voiceToken = token;
   if (currentAudio) {
     currentAudio.pause();

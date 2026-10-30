@@ -30,6 +30,8 @@ body {
 }
 
 .top {
+  position: relative;
+  z-index: 21;
   display: flex;
   justify-content: space-between;
   gap: 24px;
@@ -111,17 +113,70 @@ main {
 .who { color: var(--lamp); font-family: var(--display); margin-right: 6px; }
 .intro-rule { font-size: 15px; }
 
+.viewport {
+  position: relative;
+  margin: 14px;
+  overflow: hidden;
+  border: 3px solid #10141c;
+  background: #10141c;
+  touch-action: none;
+  cursor: grab;
+}
+
+.viewport.camera-shut { cursor: default; }
+.viewport:active:not(.camera-shut) { cursor: grabbing; }
+
+.view-tag {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  left: 10px;
+  margin: 0;
+  color: var(--lamp);
+  font-family: var(--display);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.gimbal {
+  position: absolute;
+  z-index: 3;
+  left: 8px;
+  bottom: 8px;
+  width: 36px;
+  height: 36px;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.viewport.camera-shut .gimbal { visibility: hidden; }
+.viewport.drift .gimbal { opacity: 0.55; }
+
+#frame {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  margin: 0;
+  padding: 4px 8px;
+  border: 3px solid #0d0e12;
+  background: #1b1408;
+  color: var(--lamp);
+  font: 700 14px/1 var(--display);
+  cursor: pointer;
+}
+
 .room {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(3, 1fr);
   gap: 8px;
-  margin: 14px;
+  margin: 28px;
   min-height: 420px;
   padding: 12px;
   background: linear-gradient(180deg, var(--wall) 0 46%, var(--floor) 46% 100%);
-  border: 3px solid #10141c;
   position: relative;
+  transform: translate(var(--aim-x, 0px), var(--aim-y, 0px));
 }
 
 .room::after {
@@ -251,6 +306,9 @@ main {
 #next:focus-visible,
 #again:focus-visible,
 #open-file:focus-visible,
+#settings-open:focus-visible,
+#frame:focus-visible,
+#settings button:focus-visible,
 .eye-btn:focus-visible {
   outline: 3px solid var(--lamp);
   outline-offset: -3px;
@@ -277,7 +335,38 @@ main {
 .gain { min-height: 24px; padding: 12px 14px 0; color: var(--lamp); font-size: 22px; }
 .gain.down { color: var(--miss); }
 
-#next, #again, #open-file {
+#settings-open {
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: 3px solid #0d0e12;
+  background: transparent;
+  color: var(--ink);
+  font: 700 16px/1 var(--display);
+  cursor: pointer;
+}
+
+dialog#settings {
+  width: min(420px, calc(100% - 32px));
+  padding: 22px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 3px solid #0d0e12;
+  box-shadow: var(--shadow);
+}
+
+dialog#settings::backdrop { background: rgba(13, 14, 18, 0.72); }
+
+.toggle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+  font-size: 18px;
+}
+
+.set-note { margin-top: 14px; }
+
+#next, #again, #open-file, #settings button {
   margin: 14px;
   padding: 10px 14px;
   border: 3px solid #0d0e12;
@@ -309,7 +398,7 @@ main {
 .ending-card p { margin-top: 10px; }
 .intro-card { width: min(520px, 100%); }
 .intro-card .eyebrow { margin-bottom: 8px; }
-#open-file, #again { margin: 18px 0 0; }
+#open-file, #again, #settings button { margin: 18px 0 0; }
 #ending-score { color: var(--ink); font-size: 22px; }
 .reward { display: grid; justify-items: center; margin-top: 14px; }
 .reward[hidden] { display: none; }
@@ -319,7 +408,7 @@ main {
 @media (max-width: 800px) {
   main { grid-template-columns: 1fr; }
   .top { align-items: start; flex-direction: column; }
-  .room { min-height: 300px; }
+  .room { min-height: 280px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
