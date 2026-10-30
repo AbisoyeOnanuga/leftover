@@ -56,6 +56,7 @@ let roomNo = 0;
 let round = null;
 let started = 0;
 let timerId = 0;
+let agentTimer = 0;
 let runOver = false;
 
 openBtn.addEventListener("click", startRun);
@@ -69,6 +70,7 @@ function showIntro() {
   introBest.textContent = best ? `Best close: ${best}.` : "";
   introEl.hidden = false;
   endingEl.hidden = true;
+  clearTimeout(agentTimer);
   noteEl.textContent = "I have not opened the file for you.";
   drawBlank();
   drawTree([]);
@@ -100,6 +102,7 @@ function onNext() {
 
 function nextRoom() {
   clearInterval(timerId);
+  clearTimeout(agentTimer);
   roomNo += 1;
   const count = visibleCount();
   const deck = shuffle(KIT);
@@ -110,7 +113,20 @@ function nextRoom() {
   visible.forEach((item, index) => placement.set(cells[index], item));
   const empty = cells.filter((cell) => !placement.has(cell));
 
-  round = { leftover, placement, empty, solved: false, shifted: "" };
+  round = {
+    leftover,
+    placement,
+    empty,
+    solved: false,
+    shifted: "",
+    concealed: new Set(),
+    agentHid: new Set(),
+    agentActs: 0,
+    keyHidden: false,
+    cameraHidden: false,
+    leftoverShut: false,
+    agentHidKey: false
+  };
   started = performance.now();
   noteEl.textContent = openingLine();
   gainEl.textContent = "";
@@ -119,7 +135,9 @@ function nextRoom() {
   paintScore();
   drawRoom();
   drawTree(shuffle([...visible, leftover]));
+  paintEyes();
   armTimer();
+  agentTimer = setTimeout(agentPlay, roomNo < 3 ? 4800 : 3200);
 }
 
 function openingLine() {
@@ -184,14 +202,19 @@ function drawRoom(extra) {
     const slot = document.createElement("div");
     slot.className = "cell";
     const item = round.placement.get(cell) || (extra && extra.cell === cell ? extra.item : null);
-    if (item) slot.append(prop(item, extra && extra.item === item, round.shifted === item.id));
+    const hidden = item && round.concealed.has(item.id);
+    if (item && !hidden) slot.append(prop(item, extra && extra.item === item, round.shifted === item.id));
     roomEl.append(slot);
   }
-  const cam = cameraMark();
-  if (roomNo >= 6) cam.classList.add("drift");
-  roomEl.append(cam);
-  roomEl.classList.toggle("mood-late", roomNo >= 3 && roomNo < 6 && misses < 2);
-  roomEl.classList.toggle("mood-dark", roomNo >= 6 || misses >= 2);
+  if (!round.cameraHidden) {
+    const cam = cameraMark();
+    if (roomNo >= 6) cam.classList.add("drift");
+    roomEl.append(cam);
+  }
+  const dark = round.keyHidden || roomNo >= 6 || misses >= 2;
+  roomEl.classList.toggle("key-off", round.keyHidden);
+  roomEl.classList.toggle("mood-late", !dark && roomNo >= 3);
+  roomEl.classList.toggle("mood-dark", dark);
 }
 
 function cameraMark() {
@@ -204,9 +227,9 @@ function cameraMark() {
 function drawTree(items) {
   listEl.replaceChildren();
   const scene = branch("Scene");
-  scene.ul.append(rigRow("Camera", "camera", "The camera stays. I placed it."));
-  scene.ul.append(rigRow("Key", "light", "The key stays. I lit the room with it."));
-  scene.ul.append(rigRow("Agent", "agent", "I built this file. The object I kept is under Room."));
+  scene.ul.append(rigRow("Camera", "camera", "camera", "The camera stays. I placed it."));
+  scene.ul.append(rigRow("Key", "light", "key", "The key stays. I lit the room with it."));
+  scene.ul.append(rigRow("Agent", "agent", "", "I built this file. The object I kept is under Room."));
   const room = branch("Room");
   items.forEach((item) => room.ul.append(objectRow(item)));
   scene.ul.append(room.li);
@@ -232,41 +255,51 @@ function branch(name) {
 
 function objectRow(item) {
   const li = document.createElement("li");
+  li.className = "entry";
   const button = document.createElement("button");
   button.type = "button";
   button.className = "object";
   button.dataset.id = item.id;
-  button.innerHTML = rowMarkup(item.kind, item.name, false);
+  button.innerHTML = rowMarkup(item.kind, item.name);
   button.addEventListener("click", () => choose(item, button));
-  li.append(button);
+  li.append(button, eyeButton(item.id));
   return li;
 }
 
-function rigRow(name, kind, message) {
+function rigRow(name, kind, eyeId, message) {
   const li = document.createElement("li");
+  if (eyeId) li.className = "entry";
   const button = document.createElement("button");
   button.type = "button";
   button.className = "rig";
-  button.innerHTML = rowMarkup(kind, name, true);
+  button.innerHTML = rowMarkup(kind, name);
   button.addEventListener("click", () => {
     if (runOver || !round || round.solved) return;
     noteEl.textContent = message;
   });
   li.append(button);
+  if (eyeId) li.append(eyeButton(eyeId));
   return li;
 }
 
-function rowMarkup(kind, name, shown) {
-  return `<span class="spacer" aria-hidden="true"></span><span class="kind ${kind}" aria-hidden="true"></span><span class="name">${name}</span>${shown ? eye() : `<span class="eye-slot"></span>`}`;
+function eyeButton(id) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "eye-btn";
+  button.dataset.eye = id;
+  button.setAttribute("aria-label", `Hide ${id.charAt(0).toUpperCase()}${id.slice(1)}`);
+  button.innerHTML = eyeSvg(true);
+  button.addEventListener("click", () => toggleFlag(id));
+  return button;
 }
 
-function eye() {
-  return `<svg class="eye" viewBox="0 0 16 10" aria-label="In the view"><path d="M1 5s3-4 7-4 7 4 7 4-3 4-7 4S1 5 1 5z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="5" r="1.6" fill="currentColor"/></svg>`;
+function rowMarkup(kind, name) {
+  return `<span class="spacer" aria-hidden="true"></span><span class="kind ${kind}" aria-hidden="true"></span><span class="name">${name}</span>`;
 }
 
-function markShown(button) {
-  const slot = button.querySelector(".eye-slot");
-  if (slot) slot.outerHTML = eye();
+function eyeSvg(open) {
+  const slash = open ? "" : `<path d="M2 9 L14 1" stroke="currentColor" stroke-width="1.4"/>`;
+  return `<svg class="eye" viewBox="0 0 16 10" aria-hidden="true"><path d="M1 5s3-4 7-4 7 4 7 4-3 4-7 4S1 5 1 5z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="5" r="1.6" fill="currentColor"/>${slash}</svg>`;
 }
 
 function choose(item, button) {
@@ -277,6 +310,7 @@ function choose(item, button) {
   }
 
   clearInterval(timerId);
+  clearTimeout(agentTimer);
   const seconds = Math.floor((performance.now() - started) / 1000);
   const timeBonus = Math.max(0, 30 - seconds);
   const streakBonus = streak * 15;
@@ -292,7 +326,6 @@ function choose(item, button) {
   touchRoom();
   lockList();
   button.classList.add("found");
-  markShown(button);
   drawRoom({ item, cell: round.empty[0] });
   nextBtn.hidden = false;
   nextBtn.textContent = roomNo >= ROOMS ? "Close the file" : "Next room";
@@ -310,18 +343,21 @@ function miss(button, message, closeRoom) {
   if (button) {
     button.disabled = true;
     button.classList.add("miss");
-    markShown(button);
     const moved = agentShift();
-    noteEl.textContent = moved
-      ? `That one was already drawn. I moved the ${moved.name}.`
-      : "That one was already drawn.";
+    const stolen = misses < MISSES ? agentHide() : null;
+    if (stolen && moved) noteEl.textContent = `I moved the ${moved.name}, and I closed the ${stolen.name}.`;
+    else if (stolen) noteEl.textContent = `I closed the ${stolen.name}.`;
+    else if (moved) noteEl.textContent = `That one was already drawn. I moved the ${moved.name}.`;
+    else noteEl.textContent = "That one was already drawn.";
     drawRoom();
+    paintEyes();
     touchRoom();
   } else {
     noteEl.textContent = message;
   }
   if (misses >= MISSES) {
     clearInterval(timerId);
+    clearTimeout(agentTimer);
     round.solved = true;
     lockList();
     noteEl.textContent = "I am closing the file.";
@@ -339,6 +375,118 @@ function miss(button, message, closeRoom) {
     nextBtn.textContent = "Next room";
     nextBtn.focus();
   }
+}
+
+function agentPlay() {
+  if (!round || round.solved) return;
+  if (roomNo === 4 || roomNo === 7) {
+    agentHideKey();
+    return;
+  }
+  const stolen = agentHide();
+  if (!stolen) return;
+  noteEl.textContent = `I closed the ${stolen.name}. Open its eye if you want it back.`;
+  drawRoom();
+  paintEyes();
+  touchRoom();
+}
+
+function agentHide() {
+  if (!round || round.solved || round.agentActs >= 2) return null;
+  const showing = [...round.placement.values()].filter((item) => !round.concealed.has(item.id));
+  if (showing.length <= 2) return null;
+  const item = showing[Math.floor(Math.random() * showing.length)];
+  round.concealed.add(item.id);
+  round.agentHid.add(item.id);
+  round.agentActs += 1;
+  return item;
+}
+
+function agentHideKey() {
+  if (!round || round.solved || round.agentActs >= 2 || round.keyHidden) return;
+  round.keyHidden = true;
+  round.agentHidKey = true;
+  round.agentActs += 1;
+  noteEl.textContent = "I closed the key. Open that eye when you want the light.";
+  drawRoom();
+  paintEyes();
+  touchRoom();
+}
+
+function toggleFlag(id) {
+  if (!round || round.solved || runOver) return;
+  if (id === "key") {
+    const opening = round.keyHidden;
+    round.keyHidden = !round.keyHidden;
+    noteEl.textContent = round.keyHidden ? "The key is hidden." : "The key is back.";
+    drawRoom();
+    paintEyes();
+    if (opening && round.agentHidKey) answerAgent();
+    return;
+  }
+  if (id === "camera") {
+    round.cameraHidden = !round.cameraHidden;
+    noteEl.textContent = round.cameraHidden ? "The camera is hidden." : "The camera is back in the view.";
+    drawRoom();
+    paintEyes();
+    return;
+  }
+  const item = itemById(id);
+  if (!item || item === round.leftover) {
+    round.leftoverShut = !round.leftoverShut;
+    noteEl.textContent = "I am holding that one out of the picture. Click the name.";
+    paintEyes();
+    return;
+  }
+  if (round.concealed.has(id)) {
+    round.concealed.delete(id);
+    noteEl.textContent = `The ${item.name} is back in the view.`;
+    drawRoom();
+    paintEyes();
+    if (round.agentHid.has(id)) answerAgent();
+    return;
+  }
+  round.concealed.add(id);
+  noteEl.textContent = `The ${item.name} is hidden.`;
+  drawRoom();
+  paintEyes();
+}
+
+function answerAgent() {
+  if (!round || round.solved || round.agentActs >= 2) return;
+  clearTimeout(agentTimer);
+  agentTimer = setTimeout(() => {
+    const stolen = agentHide();
+    if (!stolen || !round || round.solved) return;
+    noteEl.textContent = `I closed the ${stolen.name}. Open its eye if you want it back.`;
+    drawRoom();
+    paintEyes();
+    touchRoom();
+  }, 1400);
+}
+
+function itemById(id) {
+  return KIT.find((item) => item.id === id) || null;
+}
+
+function flagOpen(id) {
+  if (!round) return true;
+  if (id === "key") return !round.keyHidden;
+  if (id === "camera") return !round.cameraHidden;
+  if (round.leftover && id === round.leftover.id) return !round.leftoverShut;
+  return !round.concealed.has(id);
+}
+
+function paintEyes() {
+  listEl.querySelectorAll(".eye-btn").forEach((button) => {
+    const id = button.dataset.eye;
+    const open = flagOpen(id);
+    button.classList.toggle("shut", !open);
+    button.innerHTML = eyeSvg(open);
+    const label = id.charAt(0).toUpperCase() + id.slice(1);
+    button.setAttribute("aria-label", open ? `Hide ${label}` : `Show ${label}`);
+    button.setAttribute("aria-pressed", open ? "false" : "true");
+  });
 }
 
 function agentShift() {
@@ -379,6 +527,7 @@ function finish(cleared) {
   if (runOver) return;
   runOver = true;
   clearInterval(timerId);
+  clearTimeout(agentTimer);
   timeEl.textContent = "—";
   endingReward.hidden = true;
   endingReward.replaceChildren();

@@ -145,6 +145,7 @@ main {
 }
 
 .room.mood-dark::after { width: 54px; height: 54px; opacity: 0.75; }
+.room.key-off::after { opacity: 0; }
 
 .room.agent-touch::after { animation: key-pulse 520ms ease-out; }
 
@@ -199,13 +200,32 @@ main {
   font-weight: 700;
 }
 
+.outliner li.entry {
+  display: grid;
+  grid-template-columns: 1fr 28px;
+  align-items: center;
+}
+
 .outliner button.object,
 .outliner button.rig {
   display: grid;
-  grid-template-columns: 10px 12px 1fr 16px;
+  grid-template-columns: 10px 12px 1fr;
   align-items: center;
   gap: 8px;
 }
+
+.eye-btn {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.eye-btn.shut { color: #6a6458; }
+.eye-btn .eye { width: 16px; height: 10px; }
 
 .twisty {
   width: 0;
@@ -230,7 +250,8 @@ main {
 .outliner button:focus-visible,
 #next:focus-visible,
 #again:focus-visible,
-#open-file:focus-visible {
+#open-file:focus-visible,
+.eye-btn:focus-visible {
   outline: 3px solid var(--lamp);
   outline-offset: -3px;
 }
