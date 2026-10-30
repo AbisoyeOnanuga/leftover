@@ -115,10 +115,11 @@ main {
 
 .viewport {
   position: relative;
+  height: min(520px, 62vh);
   margin: 14px;
   overflow: hidden;
   border: 3px solid #10141c;
-  background: #10141c;
+  background: var(--wall);
   touch-action: none;
   cursor: grab;
 }
@@ -171,11 +172,14 @@ main {
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(3, 1fr);
   gap: 8px;
-  margin: 28px;
-  min-height: 420px;
-  padding: 12px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 200%;
+  height: 190%;
+  margin: 0;
+  padding: 18px;
   background: linear-gradient(180deg, var(--wall) 0 46%, var(--floor) 46% 100%);
-  position: relative;
   transform: translate(var(--aim-x, 0px), var(--aim-y, 0px));
 }
 
@@ -366,6 +370,19 @@ dialog#settings::backdrop { background: rgba(13, 14, 18, 0.72); }
 
 .set-note { margin-top: 14px; }
 
+.slider {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.slider input {
+  width: 100%;
+  accent-color: var(--lamp);
+}
+
 #next, #again, #open-file, #settings button {
   margin: 14px;
   padding: 10px 14px;
@@ -408,7 +425,7 @@ dialog#settings::backdrop { background: rgba(13, 14, 18, 0.72); }
 @media (max-width: 800px) {
   main { grid-template-columns: 1fr; }
   .top { align-items: start; flex-direction: column; }
-  .room { min-height: 280px; }
+  .viewport { height: 360px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

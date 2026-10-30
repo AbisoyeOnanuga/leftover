@@ -54,9 +54,12 @@ const settingsOpen = document.querySelector("#settings-open");
 const settingsEl = document.querySelector("#settings");
 const voiceBox = document.querySelector("#set-voice");
 const soundBox = document.querySelector("#set-sound");
+const voiceLevel = document.querySelector("#voice-level");
+const soundLevel = document.querySelector("#sound-level");
 const VOICE_KEY = "leftover-voice";
 const SOUND_KEY = "leftover-sound";
-const AIM = 22;
+const VOICE_LEVEL_KEY = "leftover-voice-level";
+const SOUND_LEVEL_KEY = "leftover-sound-level";
 
 let score = 0;
 let streak = 0;
@@ -82,10 +85,15 @@ openBtn.addEventListener("click", () => {
   unlockAudio();
   startRun();
 });
-frameBtn.addEventListener("click", () => setAim(0, 0));
+frameBtn.addEventListener("click", () => {
+  openingShot();
+  playCue("frame");
+});
 settingsOpen.addEventListener("click", () => settingsEl.showModal());
 voiceBox.checked = prefOn(VOICE_KEY);
 soundBox.checked = prefOn(SOUND_KEY);
+voiceLevel.value = String(Math.round(prefLevel(VOICE_LEVEL_KEY, 0.85) * 100));
+soundLevel.value = String(Math.round(prefLevel(SOUND_LEVEL_KEY, 0.8) * 100));
 voiceBox.addEventListener("change", () => {
   writePref(VOICE_KEY, voiceBox.checked);
   if (!voiceBox.checked && currentAudio) {
@@ -97,9 +105,16 @@ soundBox.addEventListener("change", () => {
   writePref(SOUND_KEY, soundBox.checked);
   if (soundBox.checked) playCue("eye");
 });
+voiceLevel.addEventListener("input", () => {
+  writeLevel(VOICE_LEVEL_KEY, voiceLevel.value);
+  if (currentAudio) currentAudio.volume = prefLevel(VOICE_LEVEL_KEY, 0.85);
+});
+soundLevel.addEventListener("input", () => writeLevel(SOUND_LEVEL_KEY, soundLevel.value));
+soundLevel.addEventListener("change", () => playCue("eye"));
 viewportEl.addEventListener("pointerdown", (event) => {
   if (event.target.closest("button")) return;
   if (round && round.cameraHidden) return;
+  playCue("look");
   drag = { x: event.clientX, y: event.clientY, ax: aimX, ay: aimY, id: event.pointerId };
   try {
     viewportEl.setPointerCapture(event.pointerId);
@@ -109,7 +124,7 @@ viewportEl.addEventListener("pointerdown", (event) => {
 });
 viewportEl.addEventListener("pointermove", (event) => {
   if (!drag || event.pointerId !== drag.id) return;
-  setAim(drag.ax + event.clientX - drag.x, drag.ay + event.clientY - drag.y);
+  setAim(drag.ax - (event.clientX - drag.x), drag.ay - (event.clientY - drag.y));
 });
 viewportEl.addEventListener("pointerup", endDrag);
 viewportEl.addEventListener("pointercancel", endDrag);
@@ -129,6 +144,7 @@ function showIntro() {
   drawBlank();
   drawTree([]);
   paintScore();
+  openingShot();
 }
 
 function startRun() {
@@ -451,6 +467,7 @@ function applyHide(taken) {
   drawRoom();
   paintEyes();
   touchRoom();
+  playCue("shutter");
   if (taken.line && lineAllowed(taken.line, names)) {
     const token = ++beat;
     noteEl.textContent = taken.line;
@@ -487,6 +504,7 @@ function agentHideKey() {
   round.agentActs += 1;
   const token = ++beat;
   noteEl.textContent = "I closed the key. Open that eye when you want the light.";
+  playCue("shutter");
   speak(token, noteEl.textContent);
   drawRoom();
   paintEyes();
@@ -507,7 +525,6 @@ function toggleFlag(id) {
   }
   if (id === "camera") {
     round.cameraHidden = !round.cameraHidden;
-    if (round.cameraHidden) setAim(0, 0);
     drawRoom();
     paintEyes();
     say(round.cameraHidden ? "The camera is hidden." : "The camera is back in the view.", "playerHide", publicNames([{ id: "camera", name: "Camera" }]));
@@ -688,12 +705,29 @@ function writePref(key, on) {
   }
 }
 
+function travel() {
+  return {
+    x: Math.max(0, roomEl.offsetWidth - viewportEl.clientWidth),
+    y: Math.max(0, roomEl.offsetHeight - viewportEl.clientHeight)
+  };
+}
+
 function setAim(x, y) {
-  aimX = Math.max(-AIM, Math.min(AIM, x));
-  aimY = Math.max(-AIM, Math.min(AIM, y));
+  const span = travel();
+  aimX = Math.max(-span.x, Math.min(0, x));
+  aimY = Math.max(-span.y, Math.min(0, y));
   viewportEl.style.setProperty("--aim-x", `${aimX}px`);
   viewportEl.style.setProperty("--aim-y", `${aimY}px`);
 }
+
+function openingShot() {
+  const span = travel();
+  const across = roomNo >= 6 ? 0.72 : 0.5;
+  const down = roomNo >= 6 ? 0.28 : 0.42;
+  setAim(-span.x * across, -span.y * down);
+}
+
+window.addEventListener("resize", () => setAim(aimX, aimY));
 
 function endDrag(event) {
   if (!drag || (event && event.pointerId !== drag.id)) return;
@@ -701,12 +735,7 @@ function endDrag(event) {
 }
 
 function placeCamera() {
-  if (round && round.cameraHidden) {
-    setAim(0, 0);
-    return;
-  }
-  if (roomNo >= 6) setAim(14, -8);
-  else setAim(0, 0);
+  openingShot();
 }
 
 function paintCamera() {
@@ -731,12 +760,40 @@ function audioContext() {
   }
 }
 
-function tone(ctx, when, freq, duration, type, level) {
+function prefLevel(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null || raw === "") return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return fallback;
+    return Math.min(1, Math.max(0, value / 100));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLevel(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    /* This sitting keeps the slider. */
+  }
+}
+
+function soundVolume() {
+  if (!prefOn(SOUND_KEY)) return 0;
+  return prefLevel(SOUND_LEVEL_KEY, 0.8);
+}
+
+function tone(ctx, when, freq, duration, type, level, endFreq) {
+  const loud = (level || 0.2) * soundVolume();
+  if (loud <= 0.001) return;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = type;
   osc.frequency.setValueAtTime(freq, when);
-  gain.gain.setValueAtTime(level || 0.05, when);
+  if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, when + duration);
+  gain.gain.setValueAtTime(loud, when);
   gain.gain.exponentialRampToValueAtTime(0.001, when + duration);
   osc.connect(gain);
   gain.connect(ctx.destination);
@@ -744,32 +801,66 @@ function tone(ctx, when, freq, duration, type, level) {
   osc.stop(when + duration + 0.02);
 }
 
+function noise(ctx, when, duration, level, frequency) {
+  const loud = level * soundVolume();
+  if (loud <= 0.001) return;
+  const length = Math.max(1, Math.floor(ctx.sampleRate * duration));
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = frequency;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(loud, when);
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(when);
+}
+
 function playCue(kind) {
-  if (!prefOn(SOUND_KEY)) return;
+  if (soundVolume() <= 0) return;
   const ctx = audioContext();
   if (!ctx) return;
   const now = ctx.currentTime;
   if (kind === "right") {
-    tone(ctx, now, 523, 0.07, "sine");
-    tone(ctx, now + 0.08, 784, 0.09, "sine");
+    tone(ctx, now, 698, 0.08, "sine", 0.22);
+    tone(ctx, now + 0.08, 880, 0.12, "sine", 0.2);
     return;
   }
   if (kind === "win") {
-    tone(ctx, now, 523, 0.08, "sine");
-    tone(ctx, now + 0.09, 659, 0.08, "sine");
-    tone(ctx, now + 0.18, 784, 0.12, "sine");
+    tone(ctx, now, 523, 0.09, "sine", 0.2);
+    tone(ctx, now + 0.1, 659, 0.09, "sine", 0.2);
+    tone(ctx, now + 0.2, 784, 0.09, "sine", 0.2);
+    tone(ctx, now + 0.3, 1046, 0.16, "sine", 0.18);
     return;
   }
   if (kind === "wrong") {
-    tone(ctx, now, 180, 0.1, "square", 0.03);
+    tone(ctx, now, 110, 0.16, "square", 0.12);
     return;
   }
   if (kind === "miss") {
-    tone(ctx, now, 220, 0.08, "triangle", 0.04);
-    tone(ctx, now + 0.09, 110, 0.14, "triangle", 0.04);
+    tone(ctx, now, 360, 0.22, "triangle", 0.2, 90);
     return;
   }
-  tone(ctx, now, 740, 0.04, "sine", 0.04);
+  if (kind === "shutter") {
+    noise(ctx, now, 0.05, 0.35, 900);
+    tone(ctx, now, 180, 0.08, "square", 0.08);
+    return;
+  }
+  if (kind === "frame") {
+    tone(ctx, now, 494, 0.07, "sine", 0.16);
+    return;
+  }
+  if (kind === "look") {
+    noise(ctx, now, 0.03, 0.12, 500);
+    return;
+  }
+  noise(ctx, now, 0.025, 0.28, 2200);
+  tone(ctx, now, 1480, 0.04, "sine", 0.12);
 }
 
 function publicNames(items) {
@@ -844,6 +935,7 @@ function speak(token, text) {
   }).then((response) => (response.ok && response.status !== 204 ? response.blob() : null)).then((blob) => {
     if (!blob || !blob.size || token !== voiceToken) return;
     const audio = new Audio(URL.createObjectURL(blob));
+    audio.volume = prefLevel(VOICE_LEVEL_KEY, 0.85);
     currentAudio = audio;
     audio.play().catch(() => {});
   }).catch(() => {});
