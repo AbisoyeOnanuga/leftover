@@ -140,6 +140,18 @@ main {
   pointer-events: none;
 }
 
+.viewport::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image: radial-gradient(rgba(247, 241, 230, 0.45) 0.5px, transparent 0.7px);
+  background-size: 3px 3px;
+  mix-blend-mode: overlay;
+}
+
 .viewport.camera-shut .gimbal { visibility: hidden; }
 .viewport.drift .gimbal { opacity: 0.55; }
 
@@ -170,16 +182,43 @@ main {
   transform: translate(var(--aim-x, 0px), var(--aim-y, 0px));
 }
 
+.room::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 46%;
+  height: 4px;
+  background: #120e0b;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .room::after {
   content: "";
   position: absolute;
-  width: 90px;
-  height: 90px;
-  right: 18%;
-  top: 8%;
+  width: 64px;
+  height: 64px;
+  right: 22%;
+  top: 10%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(240, 193, 74, 0.55), transparent 68%);
+  background: radial-gradient(circle, rgba(240, 193, 74, 0.28), transparent 70%);
+  filter: blur(1px);
   pointer-events: none;
+  transition: width 700ms ease, height 700ms ease, opacity 700ms ease;
+}
+
+.room.lamp-lit {
+  background: linear-gradient(180deg, #4a5568 0 46%, #6a4632 46% 100%);
+}
+
+.room.lamp-lit::after {
+  width: 240px;
+  height: 240px;
+  right: 10%;
+  top: 0;
+  opacity: 1;
+  background: radial-gradient(circle, rgba(244, 212, 138, 0.72), transparent 68%);
 }
 
 .room.mood-late {

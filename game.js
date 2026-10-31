@@ -8,42 +8,42 @@ const FURNITURE = ["door", "chair", "rug", "crate", "frame", "bed"];
 const CHAIN = [
   {
     id: "clock",
-    riddle: "Something in this room keeps the hours, and the picture has no face for it. Choose that name.",
-    found: "The clock is back in the picture. That was not the way out."
+    riddle: "There's a round blank on the wall. Not a window. It ought to have hands, and it ought to be counting. I left it out.",
+    found: "There it is. The clock. It ticks, and it doesn't care that you're stuck. Door's still shut."
   },
   {
     id: "mirror",
-    riddle: "I will not keep a second face in the shot. The name that would hold one is still missing.",
-    found: "The mirror is hung. It does not open the door."
+    riddle: "Now and then I think someone's standing behind me. There isn't. What's missing is the thing that would throw that face back into the room.",
+    found: "Mirror's up. Don't linger in it. The way out isn't on the other side."
   },
   {
     id: "lamp",
-    riddle: "The room stays dim because the light was taken out of the picture. Choose the name that would bring it back.",
-    found: "The lamp is lit. The door is still mine."
+    riddle: "I like the corners dark, so I took the warm light off the floor. It's still only a name on the list.",
+    found: "Fine. Have the lamp. It's warmer. You're not out."
   },
   {
     id: "plant",
-    riddle: "Something in the list used to grow. The picture will not draw it until that name is chosen.",
-    found: "The plant is in the shot. The door is still shut."
+    riddle: "The corner used to be alive. Leaves, in a pot. Not something that walks. I never drew it.",
+    found: "The plant. It'll still be here after you. One name left."
   },
   {
     id: "key",
-    riddle: "The door is still shut. The last name is the one that opens it.",
+    riddle: "Almost. What's left is small, it turns, and the door will not budge until you choose that name.",
     found: ""
   }
 ];
 const TAUNTS = [
-  "That name is already in the picture. The door stays shut.",
-  "Wrong name. I am in no hurry.",
-  "That will not open the door."
+  "No. That one's already in the room.",
+  "Wrong. I'm not in a rush.",
+  "Listen again. That isn't it."
 ];
 const ASIDES = [
-  "I can wait longer than this room can.",
-  "The list is doing more work than the picture.",
-  "Nothing on that wall opens the way out."
+  "Take your time. I am.",
+  "The door isn't impressed.",
+  "Keep looking. I can wait."
 ];
-const WIN_LINE = "You got out. The door is open, and I am congratulating you for it, which I did not want to do.";
-const FAIL_LINE = "Three wrong names. The door stays shut.";
+const WIN_LINE = "You got out. I didn't want to say congratulations, but here it is. The door's open.";
+const FAIL_LINE = "Three wrong. That's the end of it. The door stays shut.";
 
 const KIT = [
   { id: "lamp", name: "Lamp", kind: "light", action: "The lamp was already lit in the file.", svg: lamp },
@@ -94,6 +94,7 @@ const settingsOpen = document.querySelector("#settings-open");
 const settingsEl = document.querySelector("#settings");
 const voiceBox = document.querySelector("#set-voice");
 const soundBox = document.querySelector("#set-sound");
+const musicBox = document.querySelector("#set-music");
 const voiceLevel = document.querySelector("#voice-level");
 const soundLevel = document.querySelector("#sound-level");
 const voiceStatus = document.querySelector("#voice-status");
@@ -101,6 +102,7 @@ const introSpeechEl = document.querySelector("#intro-speech");
 const INTRO_SPEECH = introSpeechEl ? introSpeechEl.textContent.trim() : "";
 const VOICE_KEY = "leftover-voice";
 const SOUND_KEY = "leftover-sound";
+const MUSIC_KEY = "leftover-music";
 const VOICE_LEVEL_KEY = "leftover-voice-level";
 const SOUND_LEVEL_KEY = "leftover-sound-level";
 
@@ -126,6 +128,8 @@ let panClock = 0;
 let voiceLive = false;
 let pendingSay = null;
 let speechQueue = [];
+let scoreGraph = null;
+let scoreTimer = 0;
 
 const KIT_NAMES = KIT.map((item) => item.name).concat(["Shade", "Key", "Camera"]);
 
@@ -142,6 +146,7 @@ settingsOpen.addEventListener("click", () => {
 });
 voiceBox.checked = prefOn(VOICE_KEY);
 soundBox.checked = prefOn(SOUND_KEY);
+musicBox.checked = prefOn(MUSIC_KEY);
 voiceLevel.value = String(Math.round(prefLevel(VOICE_LEVEL_KEY, 0.85) * 100));
 soundLevel.value = String(Math.round(prefLevel(SOUND_LEVEL_KEY, 0.8) * 100));
 voiceBox.addEventListener("change", () => {
@@ -154,6 +159,11 @@ voiceBox.addEventListener("change", () => {
 soundBox.addEventListener("change", () => {
   writePref(SOUND_KEY, soundBox.checked);
   if (soundBox.checked) playCue("eye");
+});
+musicBox.addEventListener("change", () => {
+  writePref(MUSIC_KEY, musicBox.checked);
+  if (musicBox.checked) startScore();
+  else stopScore();
 });
 voiceLevel.addEventListener("input", () => {
   writeLevel(VOICE_LEVEL_KEY, voiceLevel.value);
@@ -213,7 +223,9 @@ function stopVoice() {
 
 function begin() {
   stopVoice();
+  stopScore();
   unlockAudio();
+  if (prefOn(MUSIC_KEY)) startScore();
   score = 0;
   streak = 0;
   misses = 0;
@@ -292,9 +304,11 @@ function drawRoom(extra) {
   }
   paintCamera();
   const locked = Boolean(round.keyHidden);
+  const lampLit = round.locked && !round.locked.has("lamp");
   roomEl.classList.toggle("key-off", false);
-  roomEl.classList.toggle("mood-late", locked && misses < 2);
-  roomEl.classList.toggle("mood-dark", locked && misses >= 2);
+  roomEl.classList.toggle("lamp-lit", Boolean(lampLit));
+  roomEl.classList.toggle("mood-late", locked && misses < 2 && !lampLit);
+  roomEl.classList.toggle("mood-dark", locked && misses >= 2 && !lampLit);
 }
 
 function cameraMark() {
@@ -785,6 +799,78 @@ function mountGimbal() {
   gimbalEl.replaceChildren(mark);
 }
 
+let scoreBed = null;
+
+function startScore() {
+  const ctx = audioContext();
+  if (!ctx || scoreBed || !prefOn(MUSIC_KEY)) return;
+  const master = ctx.createGain();
+  master.gain.value = 0.0001;
+  master.connect(ctx.destination);
+  const now = ctx.currentTime;
+  master.gain.exponentialRampToValueAtTime(0.07, now + 1.4);
+  const nodes = [];
+  function drone(freq, type, level) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = level;
+    osc.connect(gain).connect(master);
+    osc.start();
+    nodes.push(osc);
+  }
+  drone(55, "sine", 0.55);
+  drone(82, "triangle", 0.16);
+  drone(58.5, "sine", 0.12);
+  const lfo = ctx.createOscillator();
+  const lfoGain = ctx.createGain();
+  lfo.frequency.value = 0.07;
+  lfoGain.gain.value = 0.02;
+  lfo.connect(lfoGain).connect(master.gain);
+  lfo.start();
+  nodes.push(lfo);
+  const seconds = 2;
+  const buffer = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  noise.loop = true;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 280;
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.value = 0.045;
+  noise.connect(filter).connect(noiseGain).connect(master);
+  noise.start();
+  nodes.push(noise);
+  scoreBed = { master, nodes };
+}
+
+function stopScore() {
+  if (!scoreBed || !audioCtx) {
+    scoreBed = null;
+    return;
+  }
+  const { master, nodes } = scoreBed;
+  scoreBed = null;
+  const now = audioCtx.currentTime;
+  try {
+    master.gain.cancelScheduledValues(now);
+    master.gain.setValueAtTime(Math.max(master.gain.value, 0.0001), now);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+  } catch {
+    /* The bed is already gone. */
+  }
+  setTimeout(() => {
+    nodes.forEach((node) => {
+      try { node.stop(); } catch { /* Already stopped. */ }
+    });
+    try { master.disconnect(); } catch { /* Already disconnected. */ }
+  }, 500);
+}
+
 function audioContext() {
   try {
     if (!audioCtx) audioCtx = new AudioContext();
@@ -1071,43 +1157,43 @@ function svg(body) {
 }
 
 function lamp() {
-  return svg(`<path d="M24 18h16l4 14H20z" fill="#f4d48a"/><path d="M32 32v16M24 50h16" stroke="#f7f1e6" stroke-width="3" fill="none"/>`)();
+  return svg(`<ellipse cx="32" cy="28" rx="18" ry="8" fill="#f4d48a" opacity="0.35"/><path d="M22 16h20l5 14H17z" fill="#f4d48a"/><path d="M30 30h4v16" fill="#c9856a"/><path d="M22 48h20" stroke="#f7f1e6" stroke-width="3"/>`)();
 }
 function vase() {
-  return svg(`<path d="M26 16h12l4 14c2 10-4 20-10 20s-12-10-10-20z" fill="#f7f1e6"/>`)();
+  return svg(`<path d="M26 14h12l2 8h-16z" fill="#f7f1e6"/><path d="M24 22h16c2 8-2 18-8 20s-10-12-8-20z" fill="#d7c4a3"/>`)();
 }
 function chair() {
-  return svg(`<path d="M22 18h20v16H22zM20 34h24v4H20zM24 38v12M40 38v12" stroke="#f7f1e6" stroke-width="3" fill="none"/>`)();
+  return svg(`<path d="M20 16h24v18H20z" fill="#8a5a3c"/><path d="M18 34h28v5H18z" fill="#c9856a"/><path d="M22 39v12M42 39v12" stroke="#5c3a28" stroke-width="3"/>`)();
 }
 function bed() {
-  return svg(`<path d="M14 36h36v10H14zM14 30h10v6H14z" fill="#f7f1e6"/>`)();
+  return svg(`<path d="M12 34h40v12H12z" fill="#6f5a78"/><path d="M12 28h14v8H12z" fill="#f7f1e6"/><path d="M14 46h36" stroke="#2a2430" stroke-width="3"/>`)();
 }
 function door() {
-  return svg(`<path d="M22 12h20v40H22z" stroke="#f7f1e6" stroke-width="3" fill="none"/><circle cx="36" cy="34" r="2" fill="#e2a13a"/>`)();
+  return svg(`<path d="M20 10h24v44H20z" fill="#5c3a28"/><path d="M23 13h18v38H23z" fill="#8a5a3c"/><circle cx="36" cy="34" r="2" fill="#e2a13a"/>`)();
 }
 function plant() {
-  return svg(`<circle cx="32" cy="24" r="10" fill="#8fb59a"/><path d="M32 34v12M24 48h16" stroke="#f7f1e6" stroke-width="3" fill="none"/>`)();
+  return svg(`<ellipse cx="32" cy="22" rx="12" ry="9" fill="#6f9a78"/><ellipse cx="24" cy="26" rx="7" ry="6" fill="#8fb59a"/><path d="M30 30h4v10" fill="#5c3a28"/><path d="M22 42h20l-2 8H24z" fill="#c9856a"/>`)();
 }
 function frame() {
-  return svg(`<rect x="16" y="14" width="32" height="36" stroke="#f7f1e6" stroke-width="3" fill="none"/>`)();
+  return svg(`<rect x="14" y="12" width="36" height="40" fill="#8a5a3c"/><rect x="20" y="18" width="24" height="28" fill="#2a3a58"/><path d="M20 36l8-8 6 6 4-4 6 8z" fill="#6f9a78"/>`)();
 }
 function clock() {
-  return svg(`<circle cx="32" cy="32" r="14" stroke="#f7f1e6" stroke-width="3" fill="none"/><path d="M32 24v8l6 4" stroke="#e2a13a" stroke-width="3" fill="none"/>`)();
+  return svg(`<circle cx="32" cy="30" r="16" fill="#f7f1e6"/><circle cx="32" cy="30" r="13" fill="#1c2430"/><path d="M32 22v8l7 4" stroke="#e2a13a" stroke-width="2" fill="none"/><circle cx="32" cy="30" r="1.5" fill="#e2a13a"/>`)();
 }
 function crate() {
-  return svg(`<path d="M16 24h32v22H16zM16 32h32M32 24v22" stroke="#f7f1e6" stroke-width="3" fill="none"/>`)();
+  return svg(`<path d="M14 22h36v24H14z" fill="#8a5a3c"/><path d="M14 30h36M32 22v24" stroke="#5c3a28" stroke-width="3"/>`)();
 }
 function stool() {
-  return svg(`<ellipse cx="32" cy="28" rx="14" ry="6" fill="#f7f1e6"/><path d="M22 30l-4 16M42 30l4 16" stroke="#f7f1e6" stroke-width="3"/>`)();
+  return svg(`<ellipse cx="32" cy="26" rx="16" ry="6" fill="#c9856a"/><path d="M20 28l-4 18M44 28l4 18M26 30l2 16M38 30l-2 16" stroke="#5c3a28" stroke-width="3"/>`)();
 }
 function mirror() {
-  return svg(`<ellipse cx="32" cy="28" rx="12" ry="16" stroke="#f7f1e6" stroke-width="3" fill="none"/><path d="M32 44v8" stroke="#e2a13a" stroke-width="3"/>`)();
+  return svg(`<ellipse cx="32" cy="26" rx="14" ry="18" fill="#c9856a"/><ellipse cx="32" cy="26" rx="10" ry="14" fill="#9bb0c4"/><path d="M28 44h8v8h-8z" fill="#8a5a3c"/>`)();
 }
 function rug() {
-  return svg(`<path d="M12 36h40l-4 10H16z" fill="#c9856a"/>`)();
+  return svg(`<path d="M10 34h44l-4 12H14z" fill="#6f3d4a"/><path d="M16 38h32M18 42h28" stroke="#c9856a" stroke-width="2"/>`)();
 }
 function keyShape() {
-  return svg(`<circle cx="22" cy="28" r="8" stroke="#e2a13a" stroke-width="3" fill="none"/><path d="M30 28h16M40 28v6M46 28v4" stroke="#e2a13a" stroke-width="3" fill="none"/>`)();
+  return svg(`<circle cx="22" cy="28" r="8" fill="#e2a13a"/><circle cx="22" cy="28" r="3" fill="#1c1814"/><path d="M30 26h16v4H30zM40 30v6h4v-6zM46 30v4h4v-4z" fill="#e2a13a"/>`)();
 }
 
 function shade() {
