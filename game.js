@@ -126,6 +126,10 @@ let streak = 0;
 let misses = 0;
 let foundRooms = 0;
 let stepNo = 0;
+let order = CHAIN.map((step) => step.id);
+let clueReady = false;
+let pendingClue = "";
+let steerStamp = 0;
 let round = null;
 let agentTimer = 0;
 let runOver = false;
@@ -156,6 +160,8 @@ const KIT_NAMES = KIT.map((item) => item.name).concat(["Shade", "Key", "Camera"]
 
 openBtn.addEventListener("click", () => begin());
 againBtn.addEventListener("click", () => begin());
+const exitBtn = document.querySelector("#exit-room");
+exitBtn.addEventListener("click", exitRoom);
 frameBtn.addEventListener("click", () => {
   openingShot();
   playCue("frame");
@@ -237,6 +243,7 @@ function showIntro() {
 }
 
 function stopVoice() {
+  steerStamp += 1;
   pendingSay = null;
   speechQueue = [];
   speakingText = "";
@@ -291,15 +298,137 @@ function begin() {
   paintEyes();
   placeCamera();
   varied = new Map();
+  order = CHAIN.map((step) => step.id);
   prefetch(0, "riddle");
   prefetch(0, "found");
   noteEl.classList.remove("spoken");
-  noteEl.textContent = prefOn(VOICE_KEY) ? "The door is locked." : CHAIN[0].riddle;
-  if (prefOn(VOICE_KEY)) enqueueSpeech(clueLine(0), { reveal: noteEl });
-  narrate(ASIDES[0], "aside", ASIDE_GAP_MS);
+  const opening = CHAIN[0].riddle;
+  if (prefOn(VOICE_KEY)) {
+    noteEl.textContent = "The door is locked.";
+    armClue(opening);
+    enqueueSpeech(opening, { reveal: noteEl, clue: true });
+  } else {
+    armClue(opening);
+    noteEl.textContent = opening;
+  }
+  askSteer("open");
+}
+
+function drawDecor() {
+  const layer = document.createElement("div");
+  layer.className = "decor";
+  layer.setAttribute("aria-hidden", "true");
+  layer.innerHTML = `
+    <svg class="web web-a" viewBox="0 0 100 100"><path d="M4 4 L96 4 M4 4 L78 28 M4 4 L58 58 M4 4 L28 78 M4 4 L4 96 M22 4 Q34 22 4 30 M44 4 Q52 40 4 52 M66 4 Q72 58 4 74" fill="none" stroke="#efe8dc" stroke-width="1.7"/></svg>
+    <svg class="web web-b" viewBox="0 0 100 100"><path d="M4 4 L96 4 M4 4 L78 28 M4 4 L58 58 M4 4 L28 78 M4 4 L4 96 M22 4 Q34 22 4 30 M44 4 Q52 40 4 52 M66 4 Q72 58 4 74" fill="none" stroke="#efe8dc" stroke-width="1.7"/></svg>
+    <svg class="bat" viewBox="0 0 64 32"><path d="M32 16c-6-8-14-10-22-6 6 2 8 8 8 8S14 10 4 12c8 6 16 6 22 2 6 4 14 4 22-2-10-2-14 2-18 8 0 0 2-6 8-8-8-4-16-2-22 6z" fill="#241c30" stroke="#d9d0ea" stroke-width="1.2"/></svg>
+    <svg class="pumpkin" viewBox="0 0 48 40"><path d="M24 6c2-4 6-4 6-1" fill="none" stroke="#3d6b32" stroke-width="2"/><ellipse cx="24" cy="24" rx="8" ry="12" fill="#e07a2f"/><ellipse cx="16" cy="24" rx="7" ry="11" fill="#c86422"/><ellipse cx="32" cy="24" rx="7" ry="11" fill="#c86422"/><path d="M20 22h2M28 22h2M22 28c2 2 4 2 6 0" fill="none" stroke="#3a2418" stroke-width="1.4"/></svg>`;
+  roomEl.append(layer);
+}
+
+function currentStep() {
+  return CHAIN.find((step) => step.id === order[stepNo]) || null;
+}
+
+function holdList(holding) {
+  listEl.classList.toggle("holding", holding && order[stepNo] !== "key");
+}
+
+function armClue(line) {
+  pendingClue = line;
+  clueReady = !prefOn(VOICE_KEY);
+  holdList(!clueReady);
+}
+
+function setMood(mood) {
+  ["still", "dim", "warm", "web"].forEach((name) => {
+    roomEl.classList.toggle(`mood-${name}`, name === mood);
+  });
+}
+
+function askSteer(phase) {
+  const stamp = ++steerStamp;
+  const remaining = order.slice(stepNo);
+  if (!remaining.length) return;
+  fetch("/act", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      event: "steer",
+      phase,
+      remaining,
+      found: order.slice(0, stepNo),
+      misses
+    })
+  }).then((response) => (response.ok ? response.json() : null)).then((data) => {
+    if (stamp !== steerStamp || runOver || !round) return;
+    applySteer(data);
+    const spoken = data && data.line && lineAllowed(data.line, []);
+    if (spoken) enqueueSpeech(data.line, { lead: ASIDE_GAP_MS, aside: true });
+    else enqueueSpeech(phase === "wrong" ? TAUNTS[(Math.max(misses, 1) - 1) % TAUNTS.length] : ASIDES[stepNo % ASIDES.length], { lead: ASIDE_GAP_MS, aside: true });
+  }).catch(() => {
+    if (stamp !== steerStamp || runOver) return;
+    enqueueSpeech(phase === "wrong" ? TAUNTS[(Math.max(misses, 1) - 1) % TAUNTS.length] : ASIDES[stepNo % ASIDES.length], { lead: ASIDE_GAP_MS, aside: true });
+  });
+}
+
+function applySteer(data) {
+  if (!data) return;
+  const live = voiceLive && speakingText && speakingText === pendingClue;
+  if (live) {
+    if (data.mood) setMood(data.mood);
+    return;
+  }
+  const index = stepNo;
+  if (index >= order.length) return;
+  const before = order[index];
+  const rest = order.slice(index);
+  if (data.id && rest.includes(data.id)) {
+    const at = order.indexOf(data.id);
+    if (at > index) {
+      order.splice(at, 1);
+      order.splice(index, 0, data.id);
+    }
+  }
+  if (data.mood) setMood(data.mood);
+  if (order[index] === before && !data.mood) return;
+  const step = currentStep();
+  if (!step) return;
+  const script = varied.get(`${step.id}:riddle`) || step.riddle;
+  const queued = speechQueue.findIndex((item) => item.clue);
+  if (queued >= 0) {
+    speechQueue[queued].text = script;
+    pendingClue = script;
+  } else if (!prefOn(VOICE_KEY)) {
+    noteEl.classList.remove("spoken");
+    noteEl.textContent = script;
+    pendingClue = script;
+  }
+  if (order[index] !== before) {
+    prefetch(stepNo, "riddle");
+    prefetch(stepNo, "found");
+  }
 }
 
 function onNext() {}
+
+function exitRoom() {
+  stopVoice();
+  stopScore();
+  round = null;
+  runOver = false;
+  stepNo = 0;
+  misses = 0;
+  score = 0;
+  order = CHAIN.map((step) => step.id);
+  gainEl.textContent = "";
+  gainEl.classList.remove("down");
+  timeEl.textContent = "Off";
+  listEl.classList.remove("holding");
+  setMood("");
+  roomEl.classList.remove("mood-late", "mood-dark", "lamp-lit");
+  showIntro();
+}
 
 function objectFor(id) {
   if (id === "key") return { id: "key", name: "Key", kind: "light", svg: keyShape };
@@ -324,6 +453,7 @@ function drawBlank() {
     slot.className = "cell";
     roomEl.append(slot);
   }
+  drawDecor();
   paintCamera();
 }
 
@@ -342,6 +472,7 @@ function drawRoom(extra) {
   sconce.setAttribute("aria-hidden", "true");
   sconce.innerHTML = `<svg viewBox="0 0 64 72" aria-hidden="true"><rect x="28" y="0" width="8" height="10" fill="#8a5a3c"/><path d="M32 8c14 8 18 16 18 16" fill="none" stroke="#c9856a" stroke-width="4"/><path d="M10 24h44l8 22H2z" fill="#5c3a28"/><path class="shade" d="M14 26h36l6 16H8z" fill="#3a342c"/></svg>`;
   roomEl.append(sconce);
+  drawDecor();
   paintCamera();
   const locked = Boolean(round.keyHidden);
   const lampLit = round.locked && !round.locked.has("lamp");
@@ -440,13 +571,15 @@ function eyeSvg(open) {
 
 function choose(item, button) {
   if (!round || round.solved || runOver || button.disabled) return;
-  const step = CHAIN[stepNo];
+  const step = currentStep();
+  const winning = Boolean(step && step.id === "key" && item.id === "key");
+  if (!clueReady && !winning) return;
   if (!step || item.id !== step.id) {
-    const later = CHAIN.some((entry) => entry.id === item.id);
-    miss(later ? null : button);
+    miss(CHAIN.some((entry) => entry.id === item.id) ? null : button);
     return;
   }
 
+  stopVoice();
   clearTimeout(agentTimer);
   round.locked.delete(item.id);
   const cell = round.empty.shift();
@@ -474,14 +607,17 @@ function choose(item, button) {
   prefetch(stepNo, "riddle");
   prefetch(stepNo, "found");
   paintScore();
+  const next = clueLine(stepNo);
   if (prefOn(VOICE_KEY)) {
     if (bridge) enqueueSpeech(bridge, { reveal: noteEl });
-    enqueueSpeech(clueLine(stepNo), { reveal: noteEl });
+    armClue(next);
+    enqueueSpeech(next, { reveal: noteEl, clue: true });
   } else {
+    armClue(next);
     noteEl.classList.remove("spoken");
-    noteEl.textContent = clueLine(stepNo);
+    noteEl.textContent = next;
   }
-  narrate(ASIDES[stepNo % ASIDES.length], "aside", ASIDE_GAP_MS);
+  askSteer("next");
 }
 
 function miss(button) {
@@ -505,7 +641,7 @@ function miss(button) {
     return;
   }
   playCue("wrong");
-  narrate(TAUNTS[(misses - 1) % TAUNTS.length], "wrong");
+  askSteer("wrong");
 }
 
 // Not called. An earlier sketch let this code hide objects on its own. The live game does not.
@@ -658,6 +794,7 @@ function paintScore() {
 function finish(cleared) {
   if (runOver) return;
   runOver = true;
+  stopVoice();
   clearTimeout(agentTimer);
   timeEl.textContent = "Off";
   endingReward.hidden = true;
@@ -1120,15 +1257,19 @@ function narrate(fallback, event, lead) {
 }
 
 function clueLine(index) {
-  return varied.get(`${index}:riddle`) || CHAIN[index].riddle;
+  const step = CHAIN.find((item) => item.id === order[index]);
+  if (!step) return "";
+  return varied.get(`${step.id}:riddle`) || step.riddle;
 }
 
 function foundLine(index) {
-  return varied.get(`${index}:found`) || CHAIN[index].found;
+  const step = CHAIN.find((item) => item.id === order[index]);
+  if (!step) return "";
+  return varied.get(`${step.id}:found`) || step.found;
 }
 
 function forbiddenNames(index, includeCurrent) {
-  return CHAIN.filter((_, i) => i > index || (includeCurrent && i === index)).map((step) => objectFor(step.id).name);
+  return order.filter((_, i) => i > index || (includeCurrent && i === index)).map((id) => objectFor(id).name);
 }
 
 function variationOk(line, forbidden, script) {
@@ -1145,10 +1286,11 @@ function variationOk(line, forbidden, script) {
 }
 
 function prefetch(index, kind) {
-  const step = CHAIN[index];
+  const step = CHAIN.find((item) => item.id === order[index]);
   if (!step) return;
   const script = kind === "found" ? step.found : step.riddle;
   if (!script) return;
+  const id = step.id;
   const forbidden = forbiddenNames(index, kind !== "found");
   fetch("/act", {
     method: "POST",
@@ -1159,13 +1301,14 @@ function prefetch(index, kind) {
       names: forbidden.map((name) => ({ name }))
     })
   }).then((response) => (response.ok ? response.json() : null)).then((data) => {
-    if (!round || runOver || stepNo > index) return;
+    if (!round || runOver || order[index] !== id) return;
     const line = data && typeof data.line === "string" ? data.line.trim() : "";
     if (!variationOk(line, forbidden, script) || line === script) return;
-    const queued = speechQueue.findIndex((item) => item && item.text === script);
+    varied.set(`${id}:${kind}`, line);
+    const queued = speechQueue.findIndex((item) => item.text === script || (kind === "riddle" && item.clue));
     if (queued < 0) return;
-    varied.set(`${index}:${kind}`, line);
     speechQueue[queued].text = line;
+    if (speechQueue[queued].clue) pendingClue = line;
   }).catch(() => {});
 }
 
@@ -1231,7 +1374,13 @@ function followSpeech(el, text, audio) {
 function enqueueSpeech(line, options = {}) {
   if (!line || !prefOn(VOICE_KEY)) return;
   const lead = options.lead === undefined ? SPEECH_GAP_MS : options.lead;
-  speechQueue.push({ text: line, lead, reveal: options.reveal || null });
+  speechQueue.push({
+    text: line,
+    lead,
+    reveal: options.reveal || null,
+    clue: Boolean(options.clue),
+    aside: Boolean(options.aside)
+  });
   drainSpeech();
 }
 
@@ -1251,8 +1400,13 @@ function drainSpeech() {
 }
 
 function releaseVoice() {
+  const heard = speakingText;
   speakingText = "";
   voiceLive = false;
+  if (heard && heard === pendingClue) {
+    clueReady = true;
+    holdList(false);
+  }
   if (currentAudio) {
     currentAudio.onended = null;
     currentAudio = null;
@@ -1320,6 +1474,7 @@ function speak(token, job) {
   voiceLive = true;
   voiceToken = token;
   speakingText = text;
+  if (job && job.clue) pendingClue = text;
   const previous = lastSpoken;
   const upcoming = speechQueue[0];
   const next = upcoming && upcoming.text ? upcoming.text : "";

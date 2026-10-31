@@ -21,6 +21,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 LOG = ROOT / "hacktoberfest-week4" / "act-log.jsonl"
+CHAIN_IDS = ("clock", "mirror", "vase", "lamp", "stool", "plant", "frame", "key")
+MOODS = ("still", "dim", "warm", "web")
+STEER_SYSTEM = (
+    "You choose the next move in a locked room for a child. Reply with one JSON object only. "
+    "Keys are id, mood, and line. id is one of the remaining ids. "
+    "mood is still, dim, warm, or web. "
+    "line is one complete spoken sentence that starts with I and names no object. "
+    "No flirting, romance, or bodies."
+)
 NAMES = (
     "Lamp", "Vase", "Chair", "Bed", "Door", "Plant", "Frame", "Clock",
     "Crate", "Stool", "Mirror", "Rug", "Shade", "Key", "Camera",
@@ -216,8 +225,60 @@ def prompt_for(event, names, allowed_ids, source=""):
     )
 
 
+def steer_turn(body):
+    remaining = []
+    for value in body.get("remaining") or []:
+        if isinstance(value, str) and value in CHAIN_IDS and value not in remaining:
+            remaining.append(value)
+    if not remaining:
+        return {"id": None, "mood": None, "line": None}
+    phase = body.get("phase") if body.get("phase") in ("open", "next", "wrong") else "next"
+    found = []
+    for value in body.get("found") or []:
+        if isinstance(value, str) and value in CHAIN_IDS and value not in found:
+            found.append(value)
+    misses = body.get("misses") if isinstance(body.get("misses"), int) else 0
+    if phase == "wrong":
+        instruction = f"The player missed. Keep id as {remaining[0]}."
+    else:
+        instruction = "Choose the next id from the remaining list. The first id is only the fallback."
+    user = (
+        f"Remaining: {', '.join(remaining)}. Found: {', '.join(found) or 'none'}. Misses: {misses}. "
+        f"{instruction} Mood is still, dim, warm, or web. "
+        "The line names no object. JSON keys are id, mood, and line."
+    )
+    started = time.perf_counter()
+    parsed, raw = gemma(user, STEER_SYSTEM, 0.4)
+    elapsed = round((time.perf_counter() - started) * 1000)
+    parsed = parsed if isinstance(parsed, dict) else {}
+    candidate = parsed.get("id")
+    if isinstance(candidate, str):
+        candidate = candidate.strip().lower()
+    picked = remaining[0] if phase == "wrong" else candidate if candidate in remaining else None
+    mood = parsed.get("mood")
+    if isinstance(mood, str):
+        mood = mood.strip().lower()
+    if mood not in MOODS:
+        mood = None
+    line = parsed.get("line")
+    accepted = line if line_ok(line, []) else None
+    write_log({
+        "event": "steer",
+        "phase": phase,
+        "remaining": remaining,
+        "reply": raw if isinstance(raw, str) else "",
+        "id": picked,
+        "mood": mood,
+        "line": accepted,
+        "ms": elapsed,
+    })
+    return {"id": picked, "mood": mood, "line": accepted, "ms": elapsed}
+
+
 def act(body):
     event = body.get("event")
+    if event == "steer":
+        return steer_turn(body)
     raw_names = body.get("names") if isinstance(body.get("names"), list) else []
     names = []
     for item in raw_names:

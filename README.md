@@ -1,8 +1,8 @@
 # Leftover
 
-A locked room in the browser. The narrator gives eight riddles. Each one points at a name that is missing from the picture. Click that name in the outliner and the object appears. The last name is the key. Three wrong names and the door stays shut. There is no clock.
+A locked room in the browser. The narrator gives eight riddles. Each one points at a name that is missing from the picture. Wait until the clue has been spoken, then click that name in the outliner. The last name is the key, and it still counts while a line is playing. Three wrong names and the door stays shut. There is no clock. Exit room returns to the intro.
 
-The eight objects stay in the same order on every play. That order is the story. Gemma, running locally as `gemma3:4b`, may paraphrase a line. It does not choose the object, the order, or the ending. The game asks for one sentence, then keeps it or throws it out. That is a model. It is not an agent: there is no loop where the model picks a tool, sees the result, and tries again. On screen the speaker is the narrator.
+The eight written riddles stay the same. Their order is a fallback: clock, mirror, vase, lamp, stool, plant, frame, key. Gemma, running locally as `gemma3:4b`, sees which names are still hidden, which are found, and how many misses there have been. It proposes the next remaining name, a room mood, and one spoken line. The game allows the name only if it is still hidden, keeps the written riddle for that name, and throws the line out if it is unfinished or unsuitable. A late or illegal reply falls back to that order and to the script. On screen the speaker is the narrator.
 
 Run `python server.py` and open http://127.0.0.1:8765/. Copy `.env.example` to `.env` when you want the voice. Blank values stay off. The riddles still play from the script if the model or the voice is absent.
 
