@@ -4,7 +4,7 @@ const FIND_POINTS = 100;
 const CLEAR_BONUS = 200;
 const BEST_KEY = "leftover-best";
 const CLEARS_KEY = "leftover-clears";
-const FURNITURE = ["door", "chair", "rug", "crate", "frame", "bed"];
+const FURNITURE = ["door", "chair", "rug", "crate", "bed"];
 const CHAIN = [
   {
     id: "clock",
@@ -17,14 +17,29 @@ const CHAIN = [
     found: "Mirror's up. Don't linger in it. The way out isn't on the other side."
   },
   {
+    id: "vase",
+    riddle: "Something should be sitting there with a neck and a belly, ready for water or stems. It doesn't walk. I never drew it.",
+    found: "The vase. Empty, and not the way out."
+  },
+  {
     id: "lamp",
     riddle: "I like the corners dark, so I took the warm light off the floor. It's still only a name on the list.",
     found: "Fine. Have the lamp. It's warmer. You're not out."
   },
   {
+    id: "stool",
+    riddle: "There's already a place to sit. What's missing is the lower one, the one without a back. That name isn't in the picture.",
+    found: "The stool. Lower than the chair. Door's still shut."
+  },
+  {
     id: "plant",
     riddle: "The corner used to be alive. Leaves, in a pot. Not something that walks. I never drew it.",
-    found: "The plant. It'll still be here after you. One name left."
+    found: "The plant. It'll still be here after you."
+  },
+  {
+    id: "frame",
+    riddle: "The wall should be holding a rectangle with a picture in it. The rectangle never got drawn.",
+    found: "The frame. Nothing in it opens the door. One name left."
   },
   {
     id: "key",
@@ -128,6 +143,8 @@ let panClock = 0;
 let voiceLive = false;
 let pendingSay = null;
 let speechQueue = [];
+let speakingText = "";
+let varied = new Map();
 let scoreGraph = null;
 let scoreTimer = 0;
 
@@ -213,6 +230,7 @@ function showIntro() {
 function stopVoice() {
   pendingSay = null;
   speechQueue = [];
+  speakingText = "";
   voiceLive = false;
   if (currentAudio) {
     currentAudio.onended = null;
@@ -260,6 +278,9 @@ function begin() {
   drawTree(shuffle([...furniture, ...CHAIN.map((step) => objectFor(step.id))]));
   paintEyes();
   placeCamera();
+  varied = new Map();
+  prefetch(0, "riddle");
+  prefetch(0, "found");
   noteEl.textContent = CHAIN[0].riddle;
   enqueueSpeech(INTRO_SPEECH);
   enqueueSpeech(CHAIN[0].riddle);
@@ -276,6 +297,7 @@ function objectFor(id) {
 function clusterCells(count) {
   const packs = {
     4: [1, 2, 5, 6],
+    5: [1, 2, 5, 6, 9],
     6: [1, 2, 4, 5, 6, 9],
     8: [0, 1, 2, 4, 5, 6, 8, 9]
   };
@@ -302,6 +324,11 @@ function drawRoom(extra) {
     if (item && !hidden) slot.append(prop(item, extra && extra.item === item, round.shifted === item.id));
     roomEl.append(slot);
   }
+  const sconce = document.createElement("div");
+  sconce.className = "sconce";
+  sconce.setAttribute("aria-hidden", "true");
+  sconce.innerHTML = `<svg viewBox="0 0 64 72" aria-hidden="true"><rect x="28" y="0" width="8" height="10" fill="#8a5a3c"/><path d="M32 8c14 8 18 16 18 16" fill="none" stroke="#c9856a" stroke-width="4"/><path d="M10 24h44l8 22H2z" fill="#5c3a28"/><path class="shade" d="M14 26h36l6 16H8z" fill="#3a342c"/></svg>`;
+  roomEl.append(sconce);
   paintCamera();
   const locked = Boolean(round.keyHidden);
   const lampLit = round.locked && !round.locked.has("lamp");
@@ -368,7 +395,7 @@ function rigRow(name, kind, eyeId) {
   button.innerHTML = rowMarkup(kind, name);
   button.addEventListener("click", () => {
     if (name !== "Narrator" || runOver || !round || round.solved || voiceLive) return;
-    enqueueSpeech(CHAIN[stepNo].riddle);
+    enqueueSpeech(clueLine(stepNo));
   });
   li.append(button);
   if (eyeId) li.append(eyeButton(eyeId));
@@ -407,7 +434,7 @@ function choose(item, button) {
   clearTimeout(agentTimer);
   round.locked.delete(item.id);
   const cell = round.empty.shift();
-  round.placement.set(cell, item);
+  if (cell !== undefined) round.placement.set(cell, item);
   foundRooms += 1;
   streak += 1;
   score += FIND_POINTS;
@@ -417,7 +444,7 @@ function choose(item, button) {
   playCue("right");
   button.disabled = true;
   button.classList.add("found");
-  drawRoom({ item, cell });
+  drawRoom(cell === undefined ? undefined : { item, cell });
   paintEyes();
   if (item.id === "key") {
     round.keyHidden = false;
@@ -426,12 +453,14 @@ function choose(item, button) {
     finish(true);
     return;
   }
-  const bridge = step.found;
+  const bridge = foundLine(stepNo);
   stepNo += 1;
+  prefetch(stepNo, "riddle");
+  prefetch(stepNo, "found");
   paintScore();
-  noteEl.textContent = CHAIN[stepNo].riddle;
+  noteEl.textContent = clueLine(stepNo);
   enqueueSpeech(bridge);
-  enqueueSpeech(CHAIN[stepNo].riddle);
+  enqueueSpeech(clueLine(stepNo));
   narrate(ASIDES[stepNo % ASIDES.length], "aside");
 }
 
@@ -1062,6 +1091,57 @@ function narrate(fallback, event) {
   });
 }
 
+function clueLine(index) {
+  return varied.get(`${index}:riddle`) || CHAIN[index].riddle;
+}
+
+function foundLine(index) {
+  return varied.get(`${index}:found`) || CHAIN[index].found;
+}
+
+function forbiddenNames(index, includeCurrent) {
+  return CHAIN.filter((_, i) => i > index || (includeCurrent && i === index)).map((step) => objectFor(step.id).name);
+}
+
+function variationOk(line, forbidden, script) {
+  if (typeof line !== "string") return false;
+  const text = line.trim();
+  if (text.length < 12 || text.length > 240) return false;
+  if ((text.match(/[.!?]+/g) || []).length > 2) return false;
+  const known = [...KIT.map((item) => item.name), "Key"];
+  const added = known.some((name) => new RegExp(`\\b${name}\\b`, "i").test(text) && !new RegExp(`\\b${name}\\b`, "i").test(script));
+  if (added) return false;
+  return !forbidden.some((name) => new RegExp(`\\b${name}\\b`, "i").test(text));
+}
+
+function prefetch(index, kind) {
+  const step = CHAIN[index];
+  if (!step) return;
+  const script = kind === "found" ? step.found : step.riddle;
+  if (!script) return;
+  const forbidden = forbiddenNames(index, kind !== "found");
+  fetch("/act", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      event: "vary",
+      source: script,
+      names: forbidden.map((name) => ({ name }))
+    })
+  }).then((response) => (response.ok ? response.json() : null)).then((data) => {
+    if (!round || runOver || stepNo > index) return;
+    const line = data && typeof data.line === "string" ? data.line.trim() : "";
+    if (!variationOk(line, forbidden, script) || line === script) return;
+    const queued = speechQueue.indexOf(script);
+    if (queued < 0) return;
+    varied.set(`${index}:${kind}`, line);
+    speechQueue[queued] = line;
+    if (kind === "riddle" && stepNo === index && noteEl.textContent === script) {
+      noteEl.textContent = line;
+    }
+  }).catch(() => {});
+}
+
 function enqueueSpeech(line) {
   if (!line || !prefOn(VOICE_KEY)) return;
   speechQueue.push(line);
@@ -1074,6 +1154,7 @@ function drainSpeech() {
 }
 
 function releaseVoice() {
+  speakingText = "";
   voiceLive = false;
   if (currentAudio) {
     currentAudio.onended = null;
@@ -1099,6 +1180,7 @@ function speak(token, text) {
   }
   voiceLive = true;
   voiceToken = token;
+  speakingText = text;
   fetch("/speak", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

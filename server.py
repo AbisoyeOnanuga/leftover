@@ -105,7 +105,33 @@ def env_value(name):
     return os.environ.get(name, "").strip()
 
 
-def gemma(user):
+VARY_SYSTEM = (
+    "You paraphrase a narrator who is keeping someone in a locked room. "
+    "Reply with one JSON object only. Keep the clue solvable and the same meaning. "
+    "Sound like a person talking, a little eerie. One or two sentences, under forty words. "
+    "Do not name any forbidden object. Do not mention any object the original line does not already name. "
+    "JSON key is line."
+)
+
+
+def variation_ok(line, forbidden, source):
+    if not isinstance(line, str):
+        return False
+    text = " ".join(line.split())
+    if len(text) < 12 or len(text) > 240:
+        return False
+    if len(re.findall(r"[.!?]+", text)) > 2:
+        return False
+    blocked = {name.lower() for name in forbidden}
+    for name in mentions(text):
+        if name.lower() in blocked:
+            return False
+        if not re.search(rf"\b{re.escape(name)}\b", source, re.I):
+            return False
+    return True
+
+
+def gemma(user, system=None, temperature=0.7):
     # Blank OLLAMA_URL means the public local Ollama port, not an account host.
     url = (env_value("OLLAMA_URL") or "http://127.0.0.1:11434").rstrip("/") + "/api/chat"
     body = {
@@ -114,10 +140,10 @@ def gemma(user):
         "format": "json",
         "keep_alive": "30m",
         "messages": [
-            {"role": "system", "content": SYSTEM},
+            {"role": "system", "content": system or SYSTEM},
             {"role": "user", "content": user},
         ],
-        "options": {"temperature": 0.7, "num_predict": 90},
+        "options": {"temperature": temperature, "num_predict": 90},
     }
     request = urllib.request.Request(
         url,
@@ -130,8 +156,19 @@ def gemma(user):
     return parse_json(content), content
 
 
-def prompt_for(event, names, allowed_ids):
+def prompt_for(event, names, allowed_ids, source=""):
     listed = ", ".join(names) if names else "none"
+    if event == "vary":
+        text = " ".join(source.split())
+        if not text or len(text) > 400:
+            return None
+        banned = ", ".join(names) if names else "none"
+        return (
+            f"Forbidden names: {banned}. "
+            "Rewrite the line in fresh spoken words. Same clue, same meaning, not harder. "
+            "Do not add an object the line does not already name. "
+            f"Line: {text} JSON key is line."
+        )
     if event == "hide":
         order = list(allowed_ids)
         random.shuffle(order)
@@ -174,11 +211,15 @@ def act(body):
             if isinstance(value, str) and value in NAME_BY_ID and value not in allowed_ids:
                 allowed_ids.append(value)
         names = [NAME_BY_ID[value] for value in allowed_ids]
-    user = prompt_for(event, names, allowed_ids)
+    source = body.get("source") if isinstance(body.get("source"), str) else ""
+    user = prompt_for(event, names, allowed_ids, source)
     if not user or (event == "hide" and len(allowed_ids) < 3):
         return {"id": None, "line": None}
     started = time.perf_counter()
-    parsed, raw = gemma(user)
+    if event == "vary":
+        parsed, raw = gemma(user, VARY_SYSTEM, 0.95)
+    else:
+        parsed, raw = gemma(user)
     elapsed = round((time.perf_counter() - started) * 1000)
     parsed = parsed if isinstance(parsed, dict) else {}
     line = parsed.get("line")
@@ -195,7 +236,10 @@ def act(body):
                 line = None
             elif not re.search(rf"\b{re.escape(NAME_BY_ID[picked])}\b", line, re.I):
                 line = None
-    accepted = line if line_ok(line, names) else None
+    if event == "vary":
+        accepted = line if variation_ok(line, names, source) else None
+    else:
+        accepted = line if line_ok(line, names) else None
     if isinstance(accepted, str):
         for name in names:
             accepted = re.sub(rf"\b{re.escape(name)}\b", name, accepted, flags=re.I)
