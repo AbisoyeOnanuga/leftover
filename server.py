@@ -79,6 +79,10 @@ def line_ok(line, allowed_names):
         return False
     if not text.startswith("I "):
         return False
+    if not re.search(r"[.!?]$", text):
+        return False
+    if re.search(r"\b(I am|I'm)\s*[.!?]*$", text, re.I):
+        return False
     return True
 
 
@@ -121,6 +125,8 @@ def variation_ok(line, forbidden, source):
     if len(text) < 12 or len(text) > 240:
         return False
     if len(re.findall(r"[.!?]+", text)) > 2:
+        return False
+    if not re.search(r"[.!?]$", text):
         return False
     blocked = {name.lower() for name in forbidden}
     for name in mentions(text):

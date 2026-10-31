@@ -53,9 +53,9 @@ const TAUNTS = [
   "Listen again. That isn't it."
 ];
 const ASIDES = [
-  "Take your time. I am.",
-  "The door isn't impressed.",
-  "Keep looking. I can wait."
+  "Take your time. I'm not going anywhere.",
+  "The door isn't impressed. Stay a while.",
+  "Keep looking. I can wait all night."
 ];
 const WIN_LINE = "You got out. I didn't want to say congratulations, but here it is. The door's open.";
 const FAIL_LINE = "Three wrong. That's the end of it. The door stays shut.";
@@ -145,6 +145,8 @@ let pendingSay = null;
 let speechQueue = [];
 let speakingText = "";
 let varied = new Map();
+let speechGap = null;
+const SPEECH_GAP_MS = 420;
 let scoreGraph = null;
 let scoreTimer = 0;
 
@@ -232,6 +234,8 @@ function stopVoice() {
   speechQueue = [];
   speakingText = "";
   voiceLive = false;
+  clearTimeout(speechGap);
+  speechGap = null;
   if (currentAudio) {
     currentAudio.onended = null;
     currentAudio.pause();
@@ -255,9 +259,7 @@ function begin() {
   endingReward.hidden = true;
   endingReward.replaceChildren();
   const furniture = FURNITURE.map((id) => itemById(id));
-  const cells = clusterCells(furniture.length);
-  const placement = new Map();
-  furniture.forEach((item, index) => placement.set(cells[index], item));
+  const placement = placeFurniture(furniture);
   const empty = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].filter((cell) => !placement.has(cell));
   round = {
     placement,
@@ -294,14 +296,15 @@ function objectFor(id) {
   return itemById(id);
 }
 
-function clusterCells(count) {
-  const packs = {
-    4: [1, 2, 5, 6],
-    5: [1, 2, 5, 6, 9],
-    6: [1, 2, 4, 5, 6, 9],
-    8: [0, 1, 2, 4, 5, 6, 8, 9]
-  };
-  return shuffle(packs[count] || packs[6]);
+function placeFurniture(furniture) {
+  const rug = furniture.find((item) => item.id === "rug");
+  const others = furniture.filter((item) => item.id !== "rug");
+  const rugCell = shuffle([8, 9, 10, 11])[0];
+  const rest = shuffle([1, 2, 5, 6, 9, 10].filter((cell) => cell !== rugCell)).slice(0, others.length);
+  const placement = new Map();
+  if (rug) placement.set(rugCell, rug);
+  others.forEach((item, index) => placement.set(rest[index], item));
+  return placement;
 }
 
 function drawBlank() {
@@ -341,7 +344,7 @@ function drawRoom(extra) {
 function cameraMark() {
   const el = document.createElement("div");
   el.className = "rig-cam";
-  el.innerHTML = svg(`<path d="M8 20h28l6-8h12v28H8z" stroke="#f7f1e6" stroke-width="3" fill="none"/><circle cx="22" cy="30" r="6" stroke="#e2a13a" stroke-width="3" fill="none"/>`)();
+  el.innerHTML = svg(`<path d="M8 24h18l4-6h18a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4z" fill="#1c1814" stroke="#f7f1e6" stroke-width="2"/><circle cx="30" cy="34" r="7" fill="#243044" stroke="#e2a13a" stroke-width="2"/><circle cx="30" cy="34" r="3" fill="#9bb0c4"/><rect x="42" y="16" width="6" height="4" rx="1" fill="#e2a13a"/>`)();
   return el;
 }
 
@@ -414,7 +417,10 @@ function eyeButton(id) {
 }
 
 function rowMarkup(kind, name) {
-  return `<span class="spacer" aria-hidden="true"></span><span class="kind ${kind}" aria-hidden="true"></span><span class="name">${name}</span>`;
+  const mark = kind === "camera"
+    ? `<svg class="kind-svg" viewBox="0 0 16 12" aria-hidden="true"><path d="M1 3.5h3.2L5.4 2h4.2l1.2 1.5H15v7H1z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="7" r="1.8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>`
+    : `<span class="kind ${kind}" aria-hidden="true"></span>`;
+  return `<span class="spacer" aria-hidden="true"></span>${mark}<span class="name">${name}</span>`;
 }
 
 function eyeSvg(open) {
@@ -1036,6 +1042,8 @@ function lineAllowed(line, names) {
   if (/\bkept\b/i.test(text) && named.length) return false;
   if (/\b(you|your|yourself|breath|remembers|every|whispered|scream|regret|echo|darkness)\b/i.test(text)) return false;
   if (!/^I\b/.test(text)) return false;
+  if (!/[.!?]$/.test(text)) return false;
+  if (/\b(I am|I'm)\s*[.!?]*$/i.test(text)) return false;
   if (round && round.leftover && !allowed.has(round.leftover.name.toLowerCase())) {
     if (new RegExp(`\\b${round.leftover.name}\\b`, "i").test(text)) return false;
   }
@@ -1108,6 +1116,7 @@ function variationOk(line, forbidden, script) {
   const text = line.trim();
   if (text.length < 12 || text.length > 240) return false;
   if ((text.match(/[.!?]+/g) || []).length > 2) return false;
+  if (!/[.!?]$/.test(text)) return false;
   const known = [...KIT.map((item) => item.name), "Key"];
   const added = known.some((name) => new RegExp(`\\b${name}\\b`, "i").test(text) && !new RegExp(`\\b${name}\\b`, "i").test(script));
   if (added) return false;
@@ -1149,7 +1158,7 @@ function enqueueSpeech(line) {
 }
 
 function drainSpeech() {
-  if (voiceLive || !speechQueue.length) return;
+  if (voiceLive || speechGap || !speechQueue.length) return;
   speak(++beat, speechQueue.shift());
 }
 
@@ -1160,16 +1169,20 @@ function releaseVoice() {
     currentAudio.onended = null;
     currentAudio = null;
   }
-  const job = pendingSay;
-  pendingSay = null;
-  if (job && job.line) {
-    if (job.el) job.el.textContent = job.line;
-    speechQueue.unshift(job.line);
-  } else if (job) {
-    say(job.fallback, job.event, job.names, job.target);
-    return;
-  }
-  drainSpeech();
+  clearTimeout(speechGap);
+  speechGap = setTimeout(() => {
+    speechGap = null;
+    const job = pendingSay;
+    pendingSay = null;
+    if (job && job.line) {
+      if (job.el) job.el.textContent = job.line;
+      speechQueue.unshift(job.line);
+    } else if (job) {
+      say(job.fallback, job.event, job.names, job.target);
+      return;
+    }
+    drainSpeech();
+  }, SPEECH_GAP_MS);
 }
 
 function speak(token, text) {
@@ -1272,7 +1285,7 @@ function mirror() {
   return svg(`<ellipse cx="32" cy="26" rx="14" ry="18" fill="#c9856a"/><ellipse cx="32" cy="26" rx="10" ry="14" fill="#9bb0c4"/><path d="M28 44h8v8h-8z" fill="#8a5a3c"/>`)();
 }
 function rug() {
-  return svg(`<path d="M10 34h44l-4 12H14z" fill="#6f3d4a"/><path d="M16 38h32M18 42h28" stroke="#c9856a" stroke-width="2"/>`)();
+  return svg(`<path d="M14 34v-5M22 34v-5M32 34v-5M42 34v-5M50 34v-5M14 54v5M22 54v5M32 54v5M42 54v5M50 54v5" stroke="#c9856a" stroke-width="2"/><rect x="12" y="34" width="40" height="20" rx="2" fill="#6f3d4a"/><rect x="16" y="38" width="32" height="12" fill="none" stroke="#e2a13a" stroke-width="2"/><ellipse cx="32" cy="44" rx="5" ry="3" fill="#c9856a"/>`)();
 }
 function keyShape() {
   return svg(`<circle cx="22" cy="28" r="8" fill="#e2a13a"/><circle cx="22" cy="28" r="3" fill="#1c1814"/><path d="M30 26h16v4H30zM40 30v6h4v-6zM46 30v4h4v-4z" fill="#e2a13a"/>`)();

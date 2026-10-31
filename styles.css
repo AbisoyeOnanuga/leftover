@@ -309,7 +309,7 @@ main {
 .outliner button.object,
 .outliner button.rig {
   display: grid;
-  grid-template-columns: 10px 12px 1fr;
+  grid-template-columns: 10px 14px 1fr;
   align-items: center;
   gap: 8px;
 }
@@ -338,6 +338,7 @@ main {
 .branch[aria-expanded="true"] .twisty { transform: rotate(90deg); }
 
 .kind { width: 10px; height: 10px; justify-self: center; }
+.kind-svg { width: 14px; height: 10px; color: var(--ink); justify-self: center; }
 .kind.mesh { background: var(--ink); border-radius: 1px; }
 .kind.light { width: 8px; height: 8px; background: var(--lamp); transform: rotate(45deg); }
 .kind.camera { box-sizing: border-box; border: 1.5px solid var(--ink); border-radius: 2px; }
