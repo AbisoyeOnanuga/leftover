@@ -144,6 +144,7 @@ let voiceLive = false;
 let pendingSay = null;
 let speechQueue = [];
 let speakingText = "";
+let lastSpoken = "";
 let varied = new Map();
 let speechGap = null;
 const SPEECH_GAP_MS = 420;
@@ -233,6 +234,7 @@ function stopVoice() {
   pendingSay = null;
   speechQueue = [];
   speakingText = "";
+  lastSpoken = "";
   voiceLive = false;
   clearTimeout(speechGap);
   speechGap = null;
@@ -1194,10 +1196,12 @@ function speak(token, text) {
   voiceLive = true;
   voiceToken = token;
   speakingText = text;
+  const previous = lastSpoken;
+  const next = speechQueue[0] || "";
   fetch("/speak", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text })
+    body: JSON.stringify({ text, previous, next })
   }).then((response) => {
     if (response.status === 204) paintVoiceStatus();
     return response.ok && response.status !== 204 ? response.blob() : null;
@@ -1210,7 +1214,9 @@ function speak(token, text) {
     audio.volume = prefLevel(VOICE_LEVEL_KEY, 0.85);
     currentAudio = audio;
     audio.onended = () => releaseVoice();
-    audio.play().catch(() => releaseVoice());
+    audio.play().then(() => {
+      lastSpoken = text;
+    }).catch(() => releaseVoice());
   }).catch(() => releaseVoice());
 }
 

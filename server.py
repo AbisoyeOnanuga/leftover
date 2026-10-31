@@ -268,7 +268,14 @@ def write_log(entry):
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def speak_mp3(text):
+def clip_context(value):
+    if not isinstance(value, str):
+        return ""
+    text = " ".join(value.split())
+    return text[:180]
+
+
+def speak_mp3(text, previous="", following=""):
     key = env_value("ELEVENLABS_API_KEY")
     voice = env_value("ELEVENLABS_VOICE_ID")
     if not key or not voice or not isinstance(text, str):
@@ -280,8 +287,19 @@ def speak_mp3(text):
     body = {
         "text": text,
         "model_id": "eleven_flash_v2_5",
-        "voice_settings": {"stability": 0.4, "similarity_boost": 0.75, "speed": 1.15},
+        "voice_settings": {
+            "stability": 0.72,
+            "similarity_boost": 0.8,
+            "style": 0,
+            "speed": 1.15,
+        },
     }
+    before = clip_context(previous)
+    after = clip_context(following)
+    if before:
+        body["previous_text"] = before
+    if after:
+        body["next_text"] = after
     request = urllib.request.Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -368,8 +386,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/speak":
             text = body.get("text") if isinstance(body, dict) else ""
+            previous = body.get("previous") if isinstance(body, dict) else ""
+            following = body.get("next") if isinstance(body, dict) else ""
             try:
-                audio = speak_mp3(text)
+                audio = speak_mp3(text, previous, following)
             except (urllib.error.URLError, TimeoutError, OSError):
                 VOICE["error"] = "network"
                 audio = None
