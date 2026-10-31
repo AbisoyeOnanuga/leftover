@@ -319,10 +319,8 @@ function drawDecor() {
   layer.className = "decor";
   layer.setAttribute("aria-hidden", "true");
   layer.innerHTML = `
-    <svg class="web web-a" viewBox="0 0 100 100"><path d="M4 4 L96 4 M4 4 L78 28 M4 4 L58 58 M4 4 L28 78 M4 4 L4 96 M22 4 Q34 22 4 30 M44 4 Q52 40 4 52 M66 4 Q72 58 4 74" fill="none" stroke="#efe8dc" stroke-width="1.7"/></svg>
-    <svg class="web web-b" viewBox="0 0 100 100"><path d="M4 4 L96 4 M4 4 L78 28 M4 4 L58 58 M4 4 L28 78 M4 4 L4 96 M22 4 Q34 22 4 30 M44 4 Q52 40 4 52 M66 4 Q72 58 4 74" fill="none" stroke="#efe8dc" stroke-width="1.7"/></svg>
-    <svg class="bat" viewBox="0 0 64 32"><path d="M32 16c-6-8-14-10-22-6 6 2 8 8 8 8S14 10 4 12c8 6 16 6 22 2 6 4 14 4 22-2-10-2-14 2-18 8 0 0 2-6 8-8-8-4-16-2-22 6z" fill="#241c30" stroke="#d9d0ea" stroke-width="1.2"/></svg>
-    <svg class="pumpkin" viewBox="0 0 48 40"><path d="M24 6c2-4 6-4 6-1" fill="none" stroke="#3d6b32" stroke-width="2"/><ellipse cx="24" cy="24" rx="8" ry="12" fill="#e07a2f"/><ellipse cx="16" cy="24" rx="7" ry="11" fill="#c86422"/><ellipse cx="32" cy="24" rx="7" ry="11" fill="#c86422"/><path d="M20 22h2M28 22h2M22 28c2 2 4 2 6 0" fill="none" stroke="#3a2418" stroke-width="1.4"/></svg>`;
+    <svg class="candle" viewBox="0 0 64 64" aria-hidden="true"><path d="M28 26h8v20h-8z" fill="#f7f1e6"/><path d="M24 46h16v6H24z" fill="#c9856a"/><path d="M32 26c-5-8-2-14 0-18 2 4 5 10 0 18z" fill="#e2a13a"/></svg>
+    <svg class="pumpkin" viewBox="0 0 64 64" aria-hidden="true"><path d="M30 16h4v6h-4z" fill="#6f9a78"/><path d="M34 12h6v4h-6z" fill="#6f9a78"/><path d="M20 28h8v22h-8z" fill="#c9856a"/><path d="M28 24h8v28h-8z" fill="#e2a13a"/><path d="M36 28h8v22h-8z" fill="#c9856a"/><path d="M26 34h3v3h-3zM35 34h3v3h-3zM29 42h8v2h-8z" fill="#5c3a28"/></svg>`;
   roomEl.append(layer);
 }
 
@@ -330,8 +328,8 @@ function currentStep() {
   return CHAIN.find((step) => step.id === order[stepNo]) || null;
 }
 
-function holdList(holding) {
-  listEl.classList.toggle("holding", holding && order[stepNo] !== "key");
+function holdList() {
+  listEl.classList.remove("holding");
 }
 
 function armClue(line) {
@@ -363,13 +361,7 @@ function askSteer(phase) {
   }).then((response) => (response.ok ? response.json() : null)).then((data) => {
     if (stamp !== steerStamp || runOver || !round) return;
     applySteer(data);
-    const spoken = data && data.line && lineAllowed(data.line, []);
-    if (spoken) enqueueSpeech(data.line, { lead: ASIDE_GAP_MS, aside: true });
-    else enqueueSpeech(phase === "wrong" ? TAUNTS[(Math.max(misses, 1) - 1) % TAUNTS.length] : ASIDES[stepNo % ASIDES.length], { lead: ASIDE_GAP_MS, aside: true });
-  }).catch(() => {
-    if (stamp !== steerStamp || runOver) return;
-    enqueueSpeech(phase === "wrong" ? TAUNTS[(Math.max(misses, 1) - 1) % TAUNTS.length] : ASIDES[stepNo % ASIDES.length], { lead: ASIDE_GAP_MS, aside: true });
-  });
+  }).catch(() => {});
 }
 
 function applySteer(data) {
@@ -569,11 +561,31 @@ function eyeSvg(open) {
   return `<svg class="eye" viewBox="0 0 16 10" aria-hidden="true"><path d="M1 5s3-4 7-4 7 4 7 4-3 4-7 4S1 5 1 5z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="5" r="1.6" fill="currentColor"/>${slash}</svg>`;
 }
 
+function cutRemark() {
+  if (speechGap && speechQueue[0] && speechQueue[0].aside) {
+    clearTimeout(speechGap);
+    speechGap = null;
+  }
+  speechQueue = speechQueue.filter((item) => !item.aside);
+  const remark = voiceLive && speakingText && speakingText !== pendingClue;
+  if (!remark) return;
+  if (currentAudio) {
+    currentAudio.onended = null;
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  cancelFollow();
+  speakingText = "";
+  voiceLive = false;
+  lastSpoken = "";
+}
+
 function choose(item, button) {
   if (!round || round.solved || runOver || button.disabled) return;
   const step = currentStep();
   const winning = Boolean(step && step.id === "key" && item.id === "key");
-  if (!clueReady && !winning) return;
+  const early = !clueReady;
+  if (early && !winning && (!step || item.id !== step.id)) return;
   if (!step || item.id !== step.id) {
     miss(CHAIN.some((entry) => entry.id === item.id) ? null : button);
     return;
@@ -602,16 +614,16 @@ function choose(item, button) {
     finish(true);
     return;
   }
-  const bridge = foundLine(stepNo);
+  const bridge = early ? "" : foundLine(stepNo);
   stepNo += 1;
   prefetch(stepNo, "riddle");
   prefetch(stepNo, "found");
   paintScore();
   const next = clueLine(stepNo);
   if (prefOn(VOICE_KEY)) {
-    if (bridge) enqueueSpeech(bridge, { reveal: noteEl });
+    if (bridge) enqueueSpeech(bridge, { reveal: noteEl, lead: 0 });
     armClue(next);
-    enqueueSpeech(next, { reveal: noteEl, clue: true });
+    enqueueSpeech(next, { reveal: noteEl, clue: true, lead: bridge ? SPEECH_GAP_MS : 0 });
   } else {
     armClue(next);
     noteEl.classList.remove("spoken");
@@ -641,6 +653,8 @@ function miss(button) {
     return;
   }
   playCue("wrong");
+  cutRemark();
+  enqueueSpeech(TAUNTS[(misses - 1) % TAUNTS.length], { lead: 0, aside: true });
   askSteer("wrong");
 }
 
