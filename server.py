@@ -29,7 +29,8 @@ NAME_BY_ID = {name.lower(): name for name in NAMES}
 SYSTEM = (
     "You are the agent of a scene file, speaking aloud. Reply with one JSON object only. "
     "The line is one or two complete spoken sentences, not a fragment, not a caption. "
-    "Keep it under forty words. Spooky and taunting, about the file, the room, or a listed object. "
+    "Keep it under forty words. The speaker controls which objects the picture shows and has already hidden one. "
+    "Spooky and taunting, about the file, the room, or a listed object. "
     "Do not address anyone. Do not say you, your, or breath. Do not say which object was kept. "
     "Do not name an object that is not in the list you are given."
 )
@@ -142,13 +143,13 @@ def prompt_for(event, names, allowed_ids):
             "Do not say you, your, breath, or kept. JSON keys are id and line."
         )
     cues = {
-        "open": "The file just opened on a new room. Do not name an object.",
+        "open": "A new room is open. The speaker controls what the picture shows, and one object stays hidden until its name is found. Do not name an object.",
         "taunt": "You closed an eye. The sentence may name only the object in the list.",
         "wrong": "They clicked a name that was already drawn. You may name only the objects in the list.",
         "reopen": "They opened an eye you had closed. You may name only that object.",
         "playerHide": "They hid something themselves. You may name only that object.",
         "hold": "They shut an eye on a name you are holding out. Do not name it. Do not say it is the one you kept.",
-        "found": "They found the object and it is now in the view. You may name it. One grudging sentence.",
+        "found": "They found the hidden object and it is now in the view. The speaker may name it.",
         "timeout": "Their time ran out and the missing object is now in the view. You may name it.",
         "close": "You are closing the file. Do not name an object.",
         "shade": "They finished the file and you are showing the shade. You may name the Shade.",
@@ -235,8 +236,8 @@ def speak_mp3(text):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
     body = {
         "text": text,
-        "model_id": "eleven_turbo_v2_5",
-        "voice_settings": {"stability": 0.35, "similarity_boost": 0.75},
+        "model_id": "eleven_flash_v2_5",
+        "voice_settings": {"stability": 0.4, "similarity_boost": 0.75, "speed": 1.15},
     }
     request = urllib.request.Request(
         url,
@@ -252,7 +253,11 @@ def speak_mp3(text):
             VOICE["error"] = ""
             return response.read()
     except urllib.error.HTTPError as err:
-        VOICE["error"] = str(err.code)
+        detail = err.read().decode("utf-8", "replace")
+        if "api_key_id_used_as_api_key" in detail:
+            VOICE["error"] = "key-id"
+        else:
+            VOICE["error"] = str(err.code)
         write_log({"event": "speak", "status": err.code, "chars": len(text)})
         return None
 

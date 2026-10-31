@@ -3,6 +3,9 @@ const MISSES = 3;
 const PENALTY = 25;
 const CLEAR_BONUS = 200;
 const BEST_KEY = "leftover-best";
+const SWEEP_KEY = "leftover-sweep";
+const SWEEP_ROOMS = 4;
+const SWEEP_BONUS = 100;
 const CLEARS_KEY = "leftover-clears";
 
 const KIT = [
@@ -47,6 +50,8 @@ const endingReward = document.querySelector("#ending-reward");
 const endingCopy = document.querySelector("#ending-copy");
 const endingScore = document.querySelector("#ending-score");
 const againBtn = document.querySelector("#again");
+const sweepBtn = document.querySelector("#open-sweep");
+const againSweepBtn = document.querySelector("#again-sweep");
 const viewportEl = document.querySelector("#viewport");
 const gimbalEl = document.querySelector("#gimbal");
 const frameBtn = document.querySelector("#frame");
@@ -59,6 +64,7 @@ const soundLevel = document.querySelector("#sound-level");
 const voiceStatus = document.querySelector("#voice-status");
 const introSpeechEl = document.querySelector("#intro-speech");
 const INTRO_SPEECH = introSpeechEl ? introSpeechEl.textContent.trim() : "";
+const SWEEP_SPEECH = "This is a shorter list, and I am already counting. I still kept one object out of the picture, so the name to find is the one the view will not draw.";
 const VOICE_KEY = "leftover-voice";
 const SOUND_KEY = "leftover-sound";
 const VOICE_LEVEL_KEY = "leftover-voice-level";
@@ -84,15 +90,16 @@ let drag = null;
 let keys = new Set();
 let panClock = 0;
 let skipOpenLine = false;
+let voiceLive = false;
+let pendingSay = null;
+let mode = "file";
 
 const KIT_NAMES = KIT.map((item) => item.name).concat(["Shade", "Key", "Camera"]);
 
-openBtn.addEventListener("click", () => {
-  unlockAudio();
-  skipOpenLine = true;
-  speak(++beat, INTRO_SPEECH);
-  startRun();
-});
+openBtn.addEventListener("click", () => begin("file"));
+sweepBtn.addEventListener("click", () => begin("sweep"));
+againBtn.addEventListener("click", () => begin("file"));
+againSweepBtn.addEventListener("click", () => begin("sweep"));
 frameBtn.addEventListener("click", () => {
   openingShot();
   playCue("frame");
@@ -146,13 +153,16 @@ window.addEventListener("blur", () => keys.clear());
 mountGimbal();
 paintVoiceStatus();
 nextBtn.addEventListener("click", onNext);
-againBtn.addEventListener("click", startRun);
 showIntro();
 
 function showIntro() {
-  const best = readNumber(BEST_KEY);
-  introBest.hidden = best === 0;
-  introBest.textContent = best ? `Best close: ${best}.` : "";
+  const fileBest = readNumber(BEST_KEY);
+  const sweepBest = readNumber(SWEEP_KEY);
+  const parts = [];
+  if (fileBest) parts.push(`Best file: ${fileBest}.`);
+  if (sweepBest) parts.push(`Best sweep: ${sweepBest}.`);
+  introBest.hidden = parts.length === 0;
+  introBest.textContent = parts.join(" ");
   introEl.hidden = false;
   endingEl.hidden = true;
   clearTimeout(agentTimer);
@@ -178,8 +188,33 @@ function startRun() {
   nextRoom();
 }
 
+function stopVoice() {
+  pendingSay = null;
+  voiceLive = false;
+  if (currentAudio) {
+    currentAudio.onended = null;
+    currentAudio.pause();
+    currentAudio = null;
+  }
+}
+
+function begin(kind) {
+  stopVoice();
+  unlockAudio();
+  mode = kind;
+  skipOpenLine = true;
+  const line = kind === "sweep" ? SWEEP_SPEECH : INTRO_SPEECH;
+  noteEl.textContent = line;
+  speak(++beat, line);
+  startRun();
+}
+
+function roomLimit() {
+  return mode === "sweep" ? SWEEP_ROOMS : ROOMS;
+}
+
 function onNext() {
-  if (roomNo >= ROOMS) {
+  if (roomNo >= roomLimit()) {
     finish(true);
     return;
   }
@@ -226,7 +261,7 @@ function nextRoom() {
   placeCamera();
   if (skipOpenLine && roomNo === 1) {
     skipOpenLine = false;
-    noteEl.textContent = INTRO_SPEECH;
+    noteEl.textContent = mode === "sweep" ? SWEEP_SPEECH : INTRO_SPEECH;
   } else {
     say(openingLine(), "open", []);
   }
@@ -234,20 +269,24 @@ function nextRoom() {
 }
 
 function openingLine() {
+  if (mode === "sweep") {
+    return "I kept one object out of this shorter list. The clock is running, and the picture will not draw that name until it is chosen.";
+  }
   const lines = [
-    "I drew a small room. One name is only in the file.",
-    "I changed what the view is allowed to show.",
-    "I parented more of them. I am still holding one back.",
-    "The room is fuller because I wanted it fuller.",
-    "I am keeping the light low. The missing name is still in the list.",
-    "I will not wait as long in this room.",
-    "This is near the end of the house. I still have one name.",
-    "This is the last room I will draw. Then the shade."
+    "I set this picture and kept one object out of it. The name is still on the list, and the view will not draw it until that name is chosen.",
+    "I decide which eyes stay open in this shot. One object remains in the file, and finding its name is how it comes back.",
+    "I parented more of them and still held one out of the picture. The list knows the name, and the view is not allowed to.",
+    "The room is fuller because I wanted more places to look. The object I kept is still missing from the shot.",
+    "I am keeping the light low, and the missing name is still only on the list. Choose that name and I will put the object back.",
+    "I will not leave this picture still for long. One object stays hidden until its name is chosen.",
+    "This is near the end of the house, and I am still holding one object out. The list has the name the picture does not.",
+    "This is the last room I will draw. Find the name I kept, and then the shade."
   ];
   return lines[roomNo - 1] || lines[0];
 }
 
 function visibleCount() {
+  if (mode === "sweep") return 6;
   if (roomNo <= 2) return 4;
   if (roomNo <= 5) return 6;
   return 8;
@@ -263,6 +302,7 @@ function clusterCells(count) {
 }
 
 function timeLimit() {
+  if (mode === "sweep") return 16;
   if (roomNo < 5) return 0;
   if (roomNo < 7) return 20;
   return 14;
@@ -421,13 +461,13 @@ function choose(item, button) {
   gainEl.classList.remove("down");
   gainEl.textContent = `+${gain}`;
   playCue("right");
-  say(`I put the ${item.name} in the view. ${item.action}`, "found", publicNames([item]));
+  say(`That was the name I kept out of the picture. I am putting the ${item.name} back where the view can hold it.`, "found", publicNames([item]));
   touchRoom();
   lockList();
   button.classList.add("found");
   drawRoom({ item, cell: round.empty[0] });
   nextBtn.hidden = false;
-  nextBtn.textContent = roomNo >= ROOMS ? "Close the file" : "Next room";
+  nextBtn.textContent = roomNo >= roomLimit() ? (mode === "sweep" ? "Close the sweep" : "Close the file") : "Next room";
   nextBtn.focus();
 }
 
@@ -445,12 +485,12 @@ function miss(button, message, closeRoom) {
     const moved = agentShift();
     const stolen = misses < MISSES ? takeHide() : null;
     const fallback = stolen && moved
-      ? `I moved the ${moved.name}, and I closed the ${stolen.item.name}.`
+      ? `That name was already drawn, so I moved the ${moved.name} and closed the ${stolen.item.name}. The object I kept is still missing.`
       : stolen
-        ? `I closed the ${stolen.item.name}.`
+        ? `That name was already drawn, so I closed the ${stolen.item.name}. The object I kept is still missing.`
         : moved
-          ? `That one was already drawn. I moved the ${moved.name}.`
-          : "That one was already drawn.";
+          ? `That name was already drawn. I moved the ${moved.name}, and the object I kept is still missing.`
+          : "That name was already drawn. The object I kept is still missing.";
     drawRoom();
     paintEyes();
     touchRoom();
@@ -493,15 +533,18 @@ function agentPlay() {
 function applyHide(taken) {
   if (!taken) return;
   const names = publicNames([taken.item]);
-  const fallback = `I closed the ${taken.item.name}. Open its eye if you want it back.`;
+  const fallback = `I closed the ${taken.item.name}. I still decide what this picture shows, and the object I kept is not this one.`;
   drawRoom();
   paintEyes();
   touchRoom();
   playCue("shutter");
   if (taken.line && lineAllowed(taken.line, names)) {
-    const token = ++beat;
+    if (voiceLive) {
+      pendingSay = { line: taken.line, el: noteEl };
+      return;
+    }
     noteEl.textContent = taken.line;
-    speak(token, taken.line);
+    speak(++beat, taken.line);
     return;
   }
   say(fallback, "taunt", names);
@@ -532,10 +575,8 @@ function agentHideKey() {
   round.keyHidden = true;
   round.agentHidKey = true;
   round.agentActs += 1;
-  const token = ++beat;
-  noteEl.textContent = "I closed the key. Open that eye when you want the light.";
   playCue("shutter");
-  speak(token, noteEl.textContent);
+  say("I closed the key, and the light stays out until that eye is opened.", "key", publicNames([{ id: "key", name: "Key" }]));
   drawRoom();
   paintEyes();
   touchRoom();
@@ -549,7 +590,6 @@ function toggleFlag(id) {
     round.keyHidden = !round.keyHidden;
     drawRoom();
     paintEyes();
-    say(round.keyHidden ? "The key is hidden." : "The key is back.", "playerHide", publicNames([{ id: "key", name: "Key" }]));
     if (opening && round.agentHidKey) answerAgent();
     return;
   }
@@ -557,28 +597,25 @@ function toggleFlag(id) {
     round.cameraHidden = !round.cameraHidden;
     drawRoom();
     paintEyes();
-    say(round.cameraHidden ? "The camera is hidden." : "The camera is back in the view.", "playerHide", publicNames([{ id: "camera", name: "Camera" }]));
     return;
   }
   const item = itemById(id);
   if (!item || item === round.leftover) {
     round.leftoverShut = !round.leftoverShut;
     paintEyes();
-    say("I am holding that one out of the picture. Click the name.", "hold", []);
+    if (!voiceLive) say("I am holding that name out of the picture. Choose it.", "hold", []);
     return;
   }
   if (round.concealed.has(id)) {
     round.concealed.delete(id);
     drawRoom();
     paintEyes();
-    say(`The ${item.name} is back in the view.`, "reopen", publicNames([item]));
     if (round.agentHid.has(id)) answerAgent();
     return;
   }
   round.concealed.add(id);
   drawRoom();
   paintEyes();
-  say(`The ${item.name} is hidden.`, "playerHide", publicNames([item]));
 }
 
 function answerAgent() {
@@ -643,8 +680,8 @@ function lockList() {
 function paintScore() {
   scoreEl.textContent = String(score);
   missesEl.textContent = `${misses}/${MISSES}`;
-  roomNoEl.textContent = roomNo ? `${roomNo}/${ROOMS}` : "—";
-  const best = readNumber(BEST_KEY);
+  roomNoEl.textContent = roomNo ? `${roomNo}/${roomLimit()}` : "—";
+  const best = readNumber(mode === "sweep" ? SWEEP_KEY : BEST_KEY);
   bestEl.textContent = best ? String(best) : "—";
 }
 
@@ -657,7 +694,19 @@ function finish(cleared) {
   endingReward.hidden = true;
   endingReward.replaceChildren();
 
-  if (cleared) {
+  if (cleared && mode === "sweep") {
+    score += SWEEP_BONUS;
+    const previous = readNumber(SWEEP_KEY);
+    const beatBest = score > previous;
+    if (beatBest) writeNumber(SWEEP_KEY, score);
+    paintScore();
+    endingTitle.textContent = beatBest ? "A new sweep" : "The sweep is closed";
+    endingScore.textContent = `${score} points. ${SWEEP_BONUS} of that is for closing the sweep.`;
+    const fallback = beatBest
+      ? "The short list is closed, and this one beat the last sweep. The shade still waits in the full file."
+      : `The short list is closed. Best sweep stays ${previous || score}. The shade still waits in the full file.`;
+    showLine(endingCopy, fallback);
+  } else if (cleared) {
     score += CLEAR_BONUS;
     const clears = readNumber(CLEARS_KEY) + 1;
     const previous = readNumber(BEST_KEY);
@@ -672,22 +721,25 @@ function finish(cleared) {
     endingReward.append(figure, caption);
     endingReward.hidden = false;
     endingTitle.textContent = clears === 1 ? "The file kept this" : beatBest ? "A new best" : "You closed the file";
-    endingScore.textContent = `${score} points. ${CLEAR_BONUS} of that is for closing the file.`;
+    endingScore.textContent = `${score} points. ${CLEAR_BONUS} of that is for closing the file. Open it again, or run a sweep.`;
     const fallback = clears === 1
-      ? SHADE.action
+      ? "The file is closed, and this shade is the reward I kept until the last room. It was never one of the objects in the picture."
       : beatBest
-        ? "The shade is still mine to show, and this close beat the last one."
-        : `The shade is still mine to show. Best close stays ${previous}.`;
-    say(fallback, "shade", publicNames([SHADE]), endingCopy);
+        ? "The file is closed, and this close beat the last one. The shade is still the reward for finishing every room."
+        : `The file is closed. Best close stays ${previous}, and the shade is still the reward for finishing every room.`;
+    showLine(endingCopy, fallback);
   } else {
     paintScore();
-    const best = readNumber(BEST_KEY);
-    endingTitle.textContent = "The file closed";
+    const bestKey = mode === "sweep" ? SWEEP_KEY : BEST_KEY;
+    const best = readNumber(bestKey);
+    endingTitle.textContent = mode === "sweep" ? "The sweep closed" : "The file closed";
     endingScore.textContent = `${score} points`;
-    const fallback = best
-      ? `I closed the file. The shade stays with me. Rooms cleared: ${foundRooms}. Best close is ${best}.`
-      : `I closed the file. The shade stays with me. Rooms cleared: ${foundRooms}.`;
-    say(fallback, "close", [], endingCopy);
+    const fallback = mode === "sweep"
+      ? `I closed the sweep before the list was finished. Rooms cleared: ${foundRooms}. ${best ? `Best sweep is ${best}.` : "The shade still waits in the full file."}`
+      : best
+        ? `I closed the file before the shade. Rooms cleared: ${foundRooms}. Best close is ${best}.`
+        : `I closed the file before the shade. Rooms cleared: ${foundRooms}.`;
+    showLine(endingCopy, fallback);
   }
 
   endingEl.hidden = false;
@@ -819,8 +871,8 @@ function paintVoiceStatus() {
       voiceStatus.textContent = "Voice is off until .env has an API key and a voice id, then restart the server.";
       return;
     }
-    if (data.error === "401") {
-      voiceStatus.textContent = "ElevenLabs did not accept the API key. Create a new key in the ElevenLabs dashboard, put it in .env, and restart the server.";
+    if (data.error === "401" || data.error === "key-id") {
+      voiceStatus.textContent = "ElevenLabs rejected that value. Paste the secret key shown when the key was created, not the key id from the list, then restart the server.";
       return;
     }
     if (data.error) {
@@ -1002,42 +1054,80 @@ function ask(event, names) {
 }
 
 function say(fallback, event, names, target) {
+  if (voiceLive) {
+    pendingSay = { fallback, event, names, target: target || noteEl };
+    return;
+  }
   const el = target || noteEl;
   const token = ++beat;
   const allowed = names || [];
   el.textContent = fallback;
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
-  }
   ask(event, allowed).then((data) => {
     if (token !== beat) return;
     const line = data && data.line && lineAllowed(data.line, allowed) ? data.line : fallback;
+    if (voiceLive) {
+      pendingSay = { line, el };
+      return;
+    }
     el.textContent = line;
     speak(token, line);
   }).catch(() => {
-    if (token === beat) speak(token, fallback);
+    if (token === beat && !voiceLive) speak(token, fallback);
   });
 }
 
-function speak(token, text) {
-  if (!prefOn(VOICE_KEY)) return;
-  voiceToken = token;
+function showLine(el, line) {
+  el.textContent = line;
+  if (voiceLive) {
+    pendingSay = { line, el };
+    return;
+  }
+  speak(++beat, line);
+}
+
+function releaseVoice() {
+  voiceLive = false;
   if (currentAudio) {
-    currentAudio.pause();
+    currentAudio.onended = null;
     currentAudio = null;
   }
+  const job = pendingSay;
+  pendingSay = null;
+  if (!job) return;
+  if (job.line) {
+    (job.el || noteEl).textContent = job.line;
+    speak(++beat, job.line);
+    return;
+  }
+  say(job.fallback, job.event, job.names, job.target);
+}
+
+function speak(token, text) {
+  if (!prefOn(VOICE_KEY) || !text) return;
+  if (voiceLive) {
+    pendingSay = { line: text, el: noteEl };
+    return;
+  }
+  voiceLive = true;
+  voiceToken = token;
   fetch("/speak", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text })
-  }).then((response) => (response.ok && response.status !== 204 ? response.blob() : null)).then((blob) => {
-    if (!blob || !blob.size || token !== voiceToken) return;
+  }).then((response) => {
+    if (response.status === 204) paintVoiceStatus();
+    return response.ok && response.status !== 204 ? response.blob() : null;
+  }).then((blob) => {
+    if (!blob || !blob.size || token !== voiceToken) {
+      releaseVoice();
+      return;
+    }
     const audio = new Audio(URL.createObjectURL(blob));
     audio.volume = prefLevel(VOICE_LEVEL_KEY, 0.85);
     currentAudio = audio;
-    audio.play().catch(() => {});
-  }).catch(() => {});
+    audio.onended = () => releaseVoice();
+    audio.play().catch(() => releaseVoice());
+  }).catch(() => releaseVoice());
 }
 
 function unlockAudio() {
