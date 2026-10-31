@@ -111,6 +111,8 @@ main {
 }
 
 .agent-line { max-width: 42ch; margin-left: auto; text-align: right; }
+.spoken .word { opacity: 0; }
+.spoken .word.on { opacity: 1; }
 .who { color: var(--lamp); font-family: var(--display); margin-right: 6px; }
 .intro-rule { font-size: 15px; }
 

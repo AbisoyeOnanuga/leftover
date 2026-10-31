@@ -288,10 +288,10 @@ def speak_mp3(text, previous="", following=""):
         "text": text,
         "model_id": "eleven_flash_v2_5",
         "voice_settings": {
-            "stability": 0.72,
+            "stability": 0.86,
             "similarity_boost": 0.8,
             "style": 0,
-            "speed": 1.15,
+            "speed": 0.9,
         },
     }
     before = clip_context(previous)

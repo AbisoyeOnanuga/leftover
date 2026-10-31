@@ -127,8 +127,6 @@ let misses = 0;
 let foundRooms = 0;
 let stepNo = 0;
 let round = null;
-let started = 0;
-let timerId = 0;
 let agentTimer = 0;
 let runOver = false;
 let beat = 0;
@@ -147,7 +145,10 @@ let speakingText = "";
 let lastSpoken = "";
 let varied = new Map();
 let speechGap = null;
-const SPEECH_GAP_MS = 420;
+let followFrame = 0;
+let lastGesture = 0;
+const SPEECH_GAP_MS = 1000;
+const ASIDE_GAP_MS = 2000;
 let scoreGraph = null;
 let scoreTimer = 0;
 
@@ -208,7 +209,8 @@ viewportEl.addEventListener("pointermove", (event) => {
 });
 viewportEl.addEventListener("pointerup", endDrag);
 viewportEl.addEventListener("pointercancel", endDrag);
-window.addEventListener("keydown", onLookKey);
+window.addEventListener("pointerdown", () => { lastGesture = performance.now(); }, true);
+window.addEventListener("keydown", (event) => { lastGesture = performance.now(); onLookKey(event); });
 window.addEventListener("keyup", (event) => keys.delete(event.code));
 window.addEventListener("blur", () => keys.clear());
 mountGimbal();
@@ -228,6 +230,10 @@ function showIntro() {
   drawTree([]);
   paintScore();
   openingShot();
+  if (prefOn(VOICE_KEY) && INTRO_SPEECH) {
+    mountWords(introSpeechEl, INTRO_SPEECH);
+    enqueueSpeech(INTRO_SPEECH, { reveal: introSpeechEl, lead: 0 });
+  }
 }
 
 function stopVoice() {
@@ -238,6 +244,7 @@ function stopVoice() {
   voiceLive = false;
   clearTimeout(speechGap);
   speechGap = null;
+  cancelFollow();
   if (currentAudio) {
     currentAudio.onended = null;
     currentAudio.pause();
@@ -246,7 +253,8 @@ function stopVoice() {
 }
 
 function begin() {
-  stopVoice();
+  const carryIntro = voiceLive && speakingText === INTRO_SPEECH;
+  if (!carryIntro) stopVoice();
   stopScore();
   unlockAudio();
   if (prefOn(MUSIC_KEY)) startScore();
@@ -276,7 +284,7 @@ function begin() {
   gainEl.textContent = "";
   gainEl.classList.remove("down");
   nextBtn.hidden = true;
-  timeEl.textContent = "—";
+  timeEl.textContent = "Off";
   paintScore();
   drawRoom();
   drawTree(shuffle([...furniture, ...CHAIN.map((step) => objectFor(step.id))]));
@@ -285,10 +293,10 @@ function begin() {
   varied = new Map();
   prefetch(0, "riddle");
   prefetch(0, "found");
-  noteEl.textContent = CHAIN[0].riddle;
-  enqueueSpeech(INTRO_SPEECH);
-  enqueueSpeech(CHAIN[0].riddle);
-  narrate(ASIDES[0], "aside");
+  noteEl.classList.remove("spoken");
+  noteEl.textContent = prefOn(VOICE_KEY) ? "The door is locked." : CHAIN[0].riddle;
+  if (prefOn(VOICE_KEY)) enqueueSpeech(clueLine(0), { reveal: noteEl });
+  narrate(ASIDES[0], "aside", ASIDE_GAP_MS);
 }
 
 function onNext() {}
@@ -400,7 +408,7 @@ function rigRow(name, kind, eyeId) {
   button.innerHTML = rowMarkup(kind, name);
   button.addEventListener("click", () => {
     if (name !== "Narrator" || runOver || !round || round.solved || voiceLive) return;
-    enqueueSpeech(clueLine(stepNo));
+    enqueueSpeech(clueLine(stepNo), { reveal: noteEl });
   });
   li.append(button);
   if (eyeId) li.append(eyeButton(eyeId));
@@ -466,10 +474,14 @@ function choose(item, button) {
   prefetch(stepNo, "riddle");
   prefetch(stepNo, "found");
   paintScore();
-  noteEl.textContent = clueLine(stepNo);
-  enqueueSpeech(bridge);
-  enqueueSpeech(clueLine(stepNo));
-  narrate(ASIDES[stepNo % ASIDES.length], "aside");
+  if (prefOn(VOICE_KEY)) {
+    if (bridge) enqueueSpeech(bridge, { reveal: noteEl });
+    enqueueSpeech(clueLine(stepNo), { reveal: noteEl });
+  } else {
+    noteEl.classList.remove("spoken");
+    noteEl.textContent = clueLine(stepNo);
+  }
+  narrate(ASIDES[stepNo % ASIDES.length], "aside", ASIDE_GAP_MS);
 }
 
 function miss(button) {
@@ -645,9 +657,8 @@ function paintScore() {
 function finish(cleared) {
   if (runOver) return;
   runOver = true;
-  clearInterval(timerId);
   clearTimeout(agentTimer);
-  timeEl.textContent = "—";
+  timeEl.textContent = "Off";
   endingReward.hidden = true;
   endingReward.replaceChildren();
 
@@ -814,7 +825,7 @@ function paintVoiceStatus() {
       voiceStatus.textContent = "Voice is not speaking yet. Check the key and restart the server.";
       return;
     }
-    voiceStatus.textContent = "Voice is ready. Enter the room to hear the narrator.";
+    voiceStatus.textContent = "Voice is ready. The narrator starts when the intro appears.";
   }).catch(() => {
     voiceStatus.textContent = "";
   });
@@ -1090,14 +1101,15 @@ function showLine(el, line) {
   enqueueSpeech(line);
 }
 
-function narrate(fallback, event) {
+function narrate(fallback, event, lead) {
   const stamp = stepNo;
+  const pause = lead || SPEECH_GAP_MS;
   ask(event, []).then((data) => {
     if (runOver || stamp !== stepNo) return;
     const line = data && data.line && lineAllowed(data.line, []) ? data.line : fallback;
-    enqueueSpeech(line);
+    enqueueSpeech(line, { lead: pause });
   }).catch(() => {
-    if (!runOver && stamp === stepNo) enqueueSpeech(fallback);
+    if (!runOver && stamp === stepNo) enqueueSpeech(fallback, { lead: pause });
   });
 }
 
@@ -1143,24 +1155,91 @@ function prefetch(index, kind) {
     if (!round || runOver || stepNo > index) return;
     const line = data && typeof data.line === "string" ? data.line.trim() : "";
     if (!variationOk(line, forbidden, script) || line === script) return;
-    const queued = speechQueue.indexOf(script);
+    const queued = speechQueue.findIndex((item) => item && item.text === script);
     if (queued < 0) return;
     varied.set(`${index}:${kind}`, line);
-    speechQueue[queued] = line;
-    if (kind === "riddle" && stepNo === index && noteEl.textContent === script) {
-      noteEl.textContent = line;
-    }
+    speechQueue[queued].text = line;
   }).catch(() => {});
 }
 
-function enqueueSpeech(line) {
+function wordWeight(word) {
+  const vowels = word.toLowerCase().match(/[aeiouy]+/g);
+  return Math.max(1, vowels ? vowels.length : 1);
+}
+
+function cancelFollow() {
+  cancelAnimationFrame(followFrame);
+  followFrame = 0;
+}
+
+function mountWords(el, text) {
+  if (!el) return [];
+  cancelFollow();
+  el.classList.add("spoken");
+  el.replaceChildren();
+  const words = text.trim().split(/\s+/);
+  words.forEach((word, index) => {
+    if (index) el.append(document.createTextNode(" "));
+    const span = document.createElement("span");
+    span.className = "word";
+    span.textContent = word;
+    el.append(span);
+  });
+  return [...el.querySelectorAll(".word")];
+}
+
+function followSpeech(el, text, audio) {
+  const plain = text.trim().replace(/\s+/g, " ");
+  let spans = [...el.querySelectorAll(".word")];
+  const current = spans.map((span) => span.textContent).join(" ");
+  if (current !== plain) spans = mountWords(el, text);
+  else spans.forEach((span) => span.classList.remove("on"));
+  const weights = spans.map((span) => wordWeight(span.textContent));
+  const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  let used = 0;
+  const marks = weights.map((weight) => {
+    const at = (used / total) * 0.92;
+    used += weight;
+    return at;
+  });
+  const tick = () => {
+    const duration = audio.duration;
+    if (!Number.isFinite(duration) || duration < 0.25) {
+      if (currentAudio === audio && !audio.ended) followFrame = requestAnimationFrame(tick);
+      else spans.forEach((span) => span.classList.add("on"));
+      return;
+    }
+    const ratio = Math.min(1, audio.currentTime / duration);
+    let pending = false;
+    spans.forEach((span, index) => {
+      if (ratio >= marks[index]) span.classList.add("on");
+      else pending = true;
+    });
+    if (pending && currentAudio === audio && !audio.ended) followFrame = requestAnimationFrame(tick);
+    else spans.forEach((span) => span.classList.add("on"));
+  };
+  followFrame = requestAnimationFrame(tick);
+}
+
+function enqueueSpeech(line, options = {}) {
   if (!line || !prefOn(VOICE_KEY)) return;
-  speechQueue.push(line);
+  const lead = options.lead === undefined ? SPEECH_GAP_MS : options.lead;
+  speechQueue.push({ text: line, lead, reveal: options.reveal || null });
   drainSpeech();
 }
 
 function drainSpeech() {
   if (voiceLive || speechGap || !speechQueue.length) return;
+  const job = speechQueue[0];
+  const lead = job.lead || 0;
+  job.lead = 0;
+  if (lead && lastSpoken) {
+    speechGap = setTimeout(() => {
+      speechGap = null;
+      drainSpeech();
+    }, lead);
+    return;
+  }
   speak(++beat, speechQueue.shift());
 }
 
@@ -1172,32 +1251,71 @@ function releaseVoice() {
     currentAudio = null;
   }
   clearTimeout(speechGap);
-  speechGap = setTimeout(() => {
-    speechGap = null;
-    const job = pendingSay;
-    pendingSay = null;
-    if (job && job.line) {
-      if (job.el) job.el.textContent = job.line;
-      speechQueue.unshift(job.line);
-    } else if (job) {
-      say(job.fallback, job.event, job.names, job.target);
-      return;
-    }
-    drainSpeech();
-  }, SPEECH_GAP_MS);
+  speechGap = null;
+  const job = pendingSay;
+  pendingSay = null;
+  if (job && job.line) {
+    if (job.el) job.el.textContent = job.line;
+    speechQueue.unshift({ text: job.line, lead: SPEECH_GAP_MS, reveal: job.el || null });
+  } else if (job) {
+    say(job.fallback, job.event, job.names, job.target);
+    return;
+  }
+  drainSpeech();
 }
 
-function speak(token, text) {
-  if (!prefOn(VOICE_KEY) || !text) return;
+function playLine(audio, text, reveal) {
+  audio.play().then(() => {
+    lastSpoken = text;
+    if (reveal) followSpeech(reveal, text, audio);
+  }).catch(() => {
+    if (performance.now() - lastGesture < 5000) {
+      audio.play().then(() => {
+        lastSpoken = text;
+        if (reveal) followSpeech(reveal, text, audio);
+      }).catch(() => holdForGesture(audio, text, reveal));
+      return;
+    }
+    holdForGesture(audio, text, reveal);
+  });
+}
+
+function holdForGesture(audio, text, reveal) {
+  const go = () => {
+    window.removeEventListener("pointerdown", go, true);
+    window.removeEventListener("keydown", go, true);
+    audio.play().then(() => {
+      lastSpoken = text;
+      if (reveal) followSpeech(reveal, text, audio);
+    }).catch(() => releaseVoice());
+  };
+  window.addEventListener("pointerdown", go, true);
+  window.addEventListener("keydown", go, true);
+}
+
+function speak(token, job) {
+  const text = typeof job === "string" ? job : job && job.text;
+  const reveal = job && typeof job === "object" ? job.reveal : null;
+  if (!text) return;
+  if (!prefOn(VOICE_KEY)) {
+    if (reveal) {
+      reveal.classList.remove("spoken");
+      reveal.textContent = text;
+    }
+    voiceLive = false;
+    speakingText = "";
+    return;
+  }
   if (voiceLive) {
-    speechQueue.push(text);
+    speechQueue.push({ text, lead: SPEECH_GAP_MS, reveal });
     return;
   }
   voiceLive = true;
   voiceToken = token;
   speakingText = text;
   const previous = lastSpoken;
-  const next = speechQueue[0] || "";
+  const upcoming = speechQueue[0];
+  const next = upcoming && upcoming.text ? upcoming.text : "";
   fetch("/speak", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1207,6 +1325,10 @@ function speak(token, text) {
     return response.ok && response.status !== 204 ? response.blob() : null;
   }).then((blob) => {
     if (!blob || !blob.size || token !== voiceToken) {
+      if (token === voiceToken && reveal) {
+        reveal.classList.remove("spoken");
+        reveal.textContent = text;
+      }
       releaseVoice();
       return;
     }
@@ -1214,9 +1336,7 @@ function speak(token, text) {
     audio.volume = prefLevel(VOICE_LEVEL_KEY, 0.85);
     currentAudio = audio;
     audio.onended = () => releaseVoice();
-    audio.play().then(() => {
-      lastSpoken = text;
-    }).catch(() => releaseVoice());
+    playLine(audio, text, reveal);
   }).catch(() => releaseVoice());
 }
 
