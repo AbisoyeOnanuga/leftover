@@ -14,11 +14,11 @@ const CHAIN = [
   {
     id: "mirror",
     riddle: "Now and then I think someone's standing behind me. There isn't. What's missing is the thing that would throw that face back into the room.",
-    found: "Mirror's up. Don't linger in it. The way out isn't on the other side."
+    found: "Mirror's up. Look once, then look away. The way out isn't on the other side."
   },
   {
     id: "vase",
-    riddle: "Something should be sitting there with a neck and a belly, ready for water or stems. It doesn't walk. I never drew it.",
+    riddle: "Something should be sitting there, tall and hollow, ready for water or stems. It doesn't walk. I never drew it.",
     found: "The vase. Empty, and not the way out."
   },
   {
@@ -53,9 +53,9 @@ const TAUNTS = [
   "Listen again. That isn't it."
 ];
 const ASIDES = [
-  "Take your time. I'm not going anywhere.",
-  "The door isn't impressed. Stay a while.",
-  "Keep looking. I can wait all night."
+  "Take your time. The door can wait.",
+  "That guess did not open it. Listen again.",
+  "Keep looking. The door is still shut."
 ];
 const WIN_LINE = "You got out. I didn't want to say congratulations, but here it is. The door's open.";
 const FAIL_LINE = "Three wrong. That's the end of it. The door stays shut.";
@@ -508,6 +508,7 @@ function miss(button) {
   narrate(TAUNTS[(misses - 1) % TAUNTS.length], "wrong");
 }
 
+// Not called. An earlier sketch let this code hide objects on its own. The live game does not.
 function agentPlay() {
   if (!round || round.solved) return;
   if (roomNo === 4 || roomNo === 7) {
@@ -1041,6 +1042,10 @@ function showingItems() {
   return [...round.placement.values()].filter((item) => !round.concealed.has(item.id));
 }
 
+function tooPersonal(text) {
+  return /\b(kiss|kisses|lips|skin|undress|naked|sexy|seduc\w*|darling|sweetheart|babe|lonely|desire|flirt|romantic|bedroom|cuddle|moan|thigh|breast|belly|neck|linger)\b|all night|stay a while|come closer|come here|want you|hold you|touch you|my dear/i.test(text);
+}
+
 function lineAllowed(line, names) {
   if (typeof line !== "string") return false;
   const text = line.trim();
@@ -1054,6 +1059,7 @@ function lineAllowed(line, names) {
   }
   if (/\bkept\b/i.test(text) && named.length) return false;
   if (/\b(you|your|yourself|breath|remembers|every|whispered|scream|regret|echo|darkness)\b/i.test(text)) return false;
+  if (tooPersonal(text)) return false;
   if (!/^I\b/.test(text)) return false;
   if (!/[.!?]$/.test(text)) return false;
   if (/\b(I am|I'm)\s*[.!?]*$/i.test(text)) return false;
@@ -1134,6 +1140,7 @@ function variationOk(line, forbidden, script) {
   const known = [...KIT.map((item) => item.name), "Key"];
   const added = known.some((name) => new RegExp(`\\b${name}\\b`, "i").test(text) && !new RegExp(`\\b${name}\\b`, "i").test(script));
   if (added) return false;
+  if (tooPersonal(text)) return false;
   return !forbidden.some((name) => new RegExp(`\\b${name}\\b`, "i").test(text));
 }
 

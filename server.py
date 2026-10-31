@@ -30,6 +30,7 @@ SYSTEM = (
     "You are the narrator of a locked room, speaking aloud. Reply with one JSON object only. "
     "The line is one or two complete spoken sentences, not a fragment. "
     "Keep it under forty words. Spooky, and trying to keep the door shut. "
+    "The listener may be young. No flirting, romance, bodies, or invitations to stay. "
     "Do not address anyone. Do not say you, your, or breath. "
     "Do not name an object. Do not give the answer to the riddle."
 )
@@ -61,6 +62,14 @@ def mentions(line):
     return found
 
 
+def too_personal(text):
+    return re.search(
+        r"\b(kiss|kisses|lips|skin|undress|naked|sexy|seduc\w*|darling|sweetheart|babe|lonely|desire|flirt|romantic|bedroom|cuddle|moan|thigh|breast|belly|neck|linger)\b|all night|stay a while|come closer|come here|want you|hold you|touch you|my dear",
+        text,
+        re.I,
+    )
+
+
 def line_ok(line, allowed_names):
     if not isinstance(line, str):
         return False
@@ -76,6 +85,8 @@ def line_ok(line, allowed_names):
     if re.search(r"\bkept\b", text, re.I) and named:
         return False
     if re.search(r"\b(you|your|yourself|breath|remembers|every|whispered|scream|regret|echo|darkness)\b", text, re.I):
+        return False
+    if too_personal(text):
         return False
     if not text.startswith("I "):
         return False
@@ -112,7 +123,9 @@ def env_value(name):
 VARY_SYSTEM = (
     "You paraphrase a narrator who is keeping someone in a locked room. "
     "Reply with one JSON object only. Keep the clue solvable and the same meaning. "
-    "Sound like a person talking, a little eerie. One or two sentences, under forty words. "
+    "Sound like a person talking, a little eerie, and suitable for a child. "
+    "No flirting, romance, bodies, or invitations to stay. "
+    "One or two sentences, under forty words. "
     "Do not name any forbidden object. Do not mention any object the original line does not already name. "
     "JSON key is line."
 )
@@ -134,6 +147,8 @@ def variation_ok(line, forbidden, source):
             return False
         if not re.search(rf"\b{re.escape(name)}\b", source, re.I):
             return False
+    if too_personal(text):
+        return False
     return True
 
 
@@ -185,8 +200,8 @@ def prompt_for(event, names, allowed_ids, source=""):
             "Do not say you, your, breath, or kept. JSON keys are id and line."
         )
     cues = {
-        "wrong": "They chose the wrong name. Taunt them for one or two sentences. Do not name any object. Do not reveal the answer.",
-        "aside": "A riddle is already on screen. Add one spooky sentence about the locked door. Do not name any object. Do not reveal the answer.",
+        "wrong": "They chose the wrong name. Taunt them for one or two sentences, the way you would tease a child about a puzzle. No flirting. Do not name any object. Do not reveal the answer.",
+        "aside": "A riddle is already on screen. Add one spooky sentence about the locked door, suitable for a child. No flirting, no bodies, no invitation to stay. Do not name any object. Do not reveal the answer.",
         "open": "The room has just been entered. One spooky sentence about the locked door. Do not name any object.",
         "close": "They failed and the door stayed shut. One sentence. Do not name any object.",
     }
