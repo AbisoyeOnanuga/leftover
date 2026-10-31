@@ -1,12 +1,49 @@
-const ROOMS = 8;
 const MISSES = 3;
 const PENALTY = 25;
+const FIND_POINTS = 100;
 const CLEAR_BONUS = 200;
 const BEST_KEY = "leftover-best";
-const SWEEP_KEY = "leftover-sweep";
-const SWEEP_ROOMS = 4;
-const SWEEP_BONUS = 100;
 const CLEARS_KEY = "leftover-clears";
+const FURNITURE = ["door", "chair", "rug", "crate", "frame", "bed"];
+const CHAIN = [
+  {
+    id: "clock",
+    riddle: "Something in this room keeps the hours, and the picture has no face for it. Choose that name.",
+    found: "The clock is back in the picture. That was not the way out."
+  },
+  {
+    id: "mirror",
+    riddle: "I will not keep a second face in the shot. The name that would hold one is still missing.",
+    found: "The mirror is hung. It does not open the door."
+  },
+  {
+    id: "lamp",
+    riddle: "The room stays dim because the light was taken out of the picture. Choose the name that would bring it back.",
+    found: "The lamp is lit. The door is still mine."
+  },
+  {
+    id: "plant",
+    riddle: "Something in the list used to grow. The picture will not draw it until that name is chosen.",
+    found: "The plant is in the shot. The door is still shut."
+  },
+  {
+    id: "key",
+    riddle: "The door is still shut. The last name is the one that opens it.",
+    found: ""
+  }
+];
+const TAUNTS = [
+  "That name is already in the picture. The door stays shut.",
+  "Wrong name. I am in no hurry.",
+  "That will not open the door."
+];
+const ASIDES = [
+  "I can wait longer than this room can.",
+  "The list is doing more work than the picture.",
+  "Nothing on that wall opens the way out."
+];
+const WIN_LINE = "You got out. The door is open, and I am congratulating you for it, which I did not want to do.";
+const FAIL_LINE = "Three wrong names. The door stays shut.";
 
 const KIT = [
   { id: "lamp", name: "Lamp", kind: "light", action: "The lamp was already lit in the file.", svg: lamp },
@@ -50,8 +87,6 @@ const endingReward = document.querySelector("#ending-reward");
 const endingCopy = document.querySelector("#ending-copy");
 const endingScore = document.querySelector("#ending-score");
 const againBtn = document.querySelector("#again");
-const sweepBtn = document.querySelector("#open-sweep");
-const againSweepBtn = document.querySelector("#again-sweep");
 const viewportEl = document.querySelector("#viewport");
 const gimbalEl = document.querySelector("#gimbal");
 const frameBtn = document.querySelector("#frame");
@@ -64,7 +99,6 @@ const soundLevel = document.querySelector("#sound-level");
 const voiceStatus = document.querySelector("#voice-status");
 const introSpeechEl = document.querySelector("#intro-speech");
 const INTRO_SPEECH = introSpeechEl ? introSpeechEl.textContent.trim() : "";
-const SWEEP_SPEECH = "This is a shorter list, and I am already counting. I still kept one object out of the picture, so the name to find is the one the view will not draw.";
 const VOICE_KEY = "leftover-voice";
 const SOUND_KEY = "leftover-sound";
 const VOICE_LEVEL_KEY = "leftover-voice-level";
@@ -74,7 +108,7 @@ let score = 0;
 let streak = 0;
 let misses = 0;
 let foundRooms = 0;
-let roomNo = 0;
+let stepNo = 0;
 let round = null;
 let started = 0;
 let timerId = 0;
@@ -89,17 +123,14 @@ let aimY = 0;
 let drag = null;
 let keys = new Set();
 let panClock = 0;
-let skipOpenLine = false;
 let voiceLive = false;
 let pendingSay = null;
-let mode = "file";
+let speechQueue = [];
 
 const KIT_NAMES = KIT.map((item) => item.name).concat(["Shade", "Key", "Camera"]);
 
-openBtn.addEventListener("click", () => begin("file"));
-sweepBtn.addEventListener("click", () => begin("sweep"));
-againBtn.addEventListener("click", () => begin("file"));
-againSweepBtn.addEventListener("click", () => begin("sweep"));
+openBtn.addEventListener("click", () => begin());
+againBtn.addEventListener("click", () => begin());
 frameBtn.addEventListener("click", () => {
   openingShot();
   playCue("frame");
@@ -156,40 +187,22 @@ nextBtn.addEventListener("click", onNext);
 showIntro();
 
 function showIntro() {
-  const fileBest = readNumber(BEST_KEY);
-  const sweepBest = readNumber(SWEEP_KEY);
-  const parts = [];
-  if (fileBest) parts.push(`Best file: ${fileBest}.`);
-  if (sweepBest) parts.push(`Best sweep: ${sweepBest}.`);
-  introBest.hidden = parts.length === 0;
-  introBest.textContent = parts.join(" ");
+  const best = readNumber(BEST_KEY);
+  introBest.hidden = best === 0;
+  introBest.textContent = best ? `Best escape: ${best}.` : "";
   introEl.hidden = false;
   endingEl.hidden = true;
   clearTimeout(agentTimer);
-  noteEl.textContent = "I have not opened the file for you.";
+  noteEl.textContent = "The door is locked.";
   drawBlank();
   drawTree([]);
   paintScore();
   openingShot();
 }
 
-function startRun() {
-  score = 0;
-  streak = 0;
-  misses = 0;
-  foundRooms = 0;
-  roomNo = 0;
-  runOver = false;
-  introEl.hidden = true;
-  endingEl.hidden = true;
-  endingReward.hidden = true;
-  endingReward.replaceChildren();
-  paintScore();
-  nextRoom();
-}
-
 function stopVoice() {
   pendingSay = null;
+  speechQueue = [];
   voiceLive = false;
   if (currentAudio) {
     currentAudio.onended = null;
@@ -198,98 +211,54 @@ function stopVoice() {
   }
 }
 
-function begin(kind) {
+function begin() {
   stopVoice();
   unlockAudio();
-  mode = kind;
-  skipOpenLine = true;
-  const line = kind === "sweep" ? SWEEP_SPEECH : INTRO_SPEECH;
-  noteEl.textContent = line;
-  speak(++beat, line);
-  startRun();
-}
-
-function roomLimit() {
-  return mode === "sweep" ? SWEEP_ROOMS : ROOMS;
-}
-
-function onNext() {
-  if (roomNo >= roomLimit()) {
-    finish(true);
-    return;
-  }
-  nextRoom();
-}
-
-function nextRoom() {
-  clearInterval(timerId);
-  clearTimeout(agentTimer);
-  roomNo += 1;
-  const count = visibleCount();
-  const deck = shuffle(KIT);
-  const visible = deck.slice(0, count);
-  const leftover = deck[count];
-  const cells = clusterCells(count);
+  score = 0;
+  streak = 0;
+  misses = 0;
+  foundRooms = 0;
+  stepNo = 0;
+  runOver = false;
+  introEl.hidden = true;
+  endingEl.hidden = true;
+  endingReward.hidden = true;
+  endingReward.replaceChildren();
+  const furniture = FURNITURE.map((id) => itemById(id));
+  const cells = clusterCells(furniture.length);
   const placement = new Map();
-  visible.forEach((item, index) => placement.set(cells[index], item));
+  furniture.forEach((item, index) => placement.set(cells[index], item));
   const empty = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].filter((cell) => !placement.has(cell));
-
   round = {
-    leftover,
     placement,
     empty,
     solved: false,
     shifted: "",
     concealed: new Set(),
-    agentHid: new Set(),
-    agentActs: 0,
-    keyHidden: false,
-    cameraHidden: false,
-    leftoverShut: false,
-    agentHidKey: false
+    locked: new Set(CHAIN.map((step) => step.id)),
+    keyHidden: true,
+    cameraHidden: false
   };
-  started = performance.now();
   gainEl.textContent = "";
   gainEl.classList.remove("down");
   nextBtn.hidden = true;
+  timeEl.textContent = "—";
   paintScore();
   drawRoom();
-  drawTree(shuffle([...visible, leftover]));
+  drawTree(shuffle([...furniture, ...CHAIN.map((step) => objectFor(step.id))]));
   paintEyes();
-  armTimer();
-  queueHide();
   placeCamera();
-  if (skipOpenLine && roomNo === 1) {
-    skipOpenLine = false;
-    noteEl.textContent = mode === "sweep" ? SWEEP_SPEECH : INTRO_SPEECH;
-  } else {
-    say(openingLine(), "open", []);
-  }
-  agentTimer = setTimeout(agentPlay, roomNo < 3 ? 4800 : 3200);
+  noteEl.textContent = CHAIN[0].riddle;
+  enqueueSpeech(INTRO_SPEECH);
+  enqueueSpeech(CHAIN[0].riddle);
+  narrate(ASIDES[0], "aside");
 }
 
-function openingLine() {
-  if (mode === "sweep") {
-    return "I kept one object out of this shorter list. The clock is running, and the picture will not draw that name until it is chosen.";
-  }
-  const lines = [
-    "I set this picture and kept one object out of it. The name is still on the list, and the view will not draw it until that name is chosen.",
-    "I decide which eyes stay open in this shot. One object remains in the file, and finding its name is how it comes back.",
-    "I parented more of them and still held one out of the picture. The list knows the name, and the view is not allowed to.",
-    "The room is fuller because I wanted more places to look. The object I kept is still missing from the shot.",
-    "I am keeping the light low, and the missing name is still only on the list. Choose that name and I will put the object back.",
-    "I will not leave this picture still for long. One object stays hidden until its name is chosen.",
-    "This is near the end of the house, and I am still holding one object out. The list has the name the picture does not.",
-    "This is the last room I will draw. Find the name I kept, and then the shade."
-  ];
-  return lines[roomNo - 1] || lines[0];
-}
+function onNext() {}
 
-function visibleCount() {
-  if (mode === "sweep") return 6;
-  if (roomNo <= 2) return 4;
-  if (roomNo <= 5) return 6;
-  return 8;
+function objectFor(id) {
+  if (id === "key") return { id: "key", name: "Key", kind: "light", svg: keyShape };
+  return itemById(id);
 }
 
 function clusterCells(count) {
@@ -298,34 +267,7 @@ function clusterCells(count) {
     6: [1, 2, 4, 5, 6, 9],
     8: [0, 1, 2, 4, 5, 6, 8, 9]
   };
-  return shuffle(packs[count] || packs[4]);
-}
-
-function timeLimit() {
-  if (mode === "sweep") return 16;
-  if (roomNo < 5) return 0;
-  if (roomNo < 7) return 20;
-  return 14;
-}
-
-function armTimer() {
-  clearInterval(timerId);
-  const limit = timeLimit();
-  if (!limit) {
-    timeEl.textContent = "—";
-    return;
-  }
-  const end = started + limit * 1000;
-  const tick = () => {
-    const left = Math.max(0, Math.ceil((end - performance.now()) / 1000));
-    timeEl.textContent = String(left);
-    if (left === 0 && round && !round.solved) {
-      clearInterval(timerId);
-      miss(null, "I moved on.", true);
-    }
-  };
-  tick();
-  timerId = setInterval(tick, 200);
+  return shuffle(packs[count] || packs[6]);
 }
 
 function drawBlank() {
@@ -349,10 +291,10 @@ function drawRoom(extra) {
     roomEl.append(slot);
   }
   paintCamera();
-  const dark = round.keyHidden || roomNo >= 6 || misses >= 2;
-  roomEl.classList.toggle("key-off", round.keyHidden);
-  roomEl.classList.toggle("mood-late", !dark && roomNo >= 3);
-  roomEl.classList.toggle("mood-dark", dark);
+  const locked = Boolean(round.keyHidden);
+  roomEl.classList.toggle("key-off", false);
+  roomEl.classList.toggle("mood-late", locked && misses < 2);
+  roomEl.classList.toggle("mood-dark", locked && misses >= 2);
 }
 
 function cameraMark() {
@@ -365,9 +307,8 @@ function cameraMark() {
 function drawTree(items) {
   listEl.replaceChildren();
   const scene = branch("Scene");
-  scene.ul.append(rigRow("Camera", "camera", "camera", "The camera stays. I placed it."));
-  scene.ul.append(rigRow("Key", "light", "key", "The key stays. I lit the room with it."));
-  scene.ul.append(rigRow("Agent", "agent", "", "I built this file. The object I kept is under Room."));
+  scene.ul.append(rigRow("Camera", "camera", "camera"));
+  scene.ul.append(rigRow("Narrator", "agent", ""));
   const room = branch("Room");
   items.forEach((item) => room.ul.append(objectRow(item)));
   scene.ul.append(room.li);
@@ -404,7 +345,7 @@ function objectRow(item) {
   return li;
 }
 
-function rigRow(name, kind, eyeId, message) {
+function rigRow(name, kind, eyeId) {
   const li = document.createElement("li");
   if (eyeId) li.className = "entry";
   const button = document.createElement("button");
@@ -412,8 +353,8 @@ function rigRow(name, kind, eyeId, message) {
   button.className = "rig";
   button.innerHTML = rowMarkup(kind, name);
   button.addEventListener("click", () => {
-    if (runOver || !round || round.solved) return;
-    noteEl.textContent = message;
+    if (name !== "Narrator" || runOver || !round || round.solved || voiceLive) return;
+    enqueueSpeech(CHAIN[stepNo].riddle);
   });
   li.append(button);
   if (eyeId) li.append(eyeButton(eyeId));
@@ -441,84 +382,67 @@ function eyeSvg(open) {
 }
 
 function choose(item, button) {
-  if (!round || round.solved || button.disabled) return;
-  if (item !== round.leftover) {
-    miss(button, "");
+  if (!round || round.solved || runOver || button.disabled) return;
+  const step = CHAIN[stepNo];
+  if (!step || item.id !== step.id) {
+    const later = CHAIN.some((entry) => entry.id === item.id);
+    miss(later ? null : button);
     return;
   }
 
-  clearInterval(timerId);
   clearTimeout(agentTimer);
-  const seconds = Math.floor((performance.now() - started) / 1000);
-  const timeBonus = Math.max(0, 30 - seconds);
-  const streakBonus = streak * 15;
-  const gain = 100 + timeBonus + streakBonus;
-  streak += 1;
+  round.locked.delete(item.id);
+  const cell = round.empty.shift();
+  round.placement.set(cell, item);
   foundRooms += 1;
-  score += gain;
-  round.solved = true;
+  streak += 1;
+  score += FIND_POINTS;
   paintScore();
   gainEl.classList.remove("down");
-  gainEl.textContent = `+${gain}`;
+  gainEl.textContent = `+${FIND_POINTS}`;
   playCue("right");
-  say(`That was the name I kept out of the picture. I am putting the ${item.name} back where the view can hold it.`, "found", publicNames([item]));
-  touchRoom();
-  lockList();
+  button.disabled = true;
   button.classList.add("found");
-  drawRoom({ item, cell: round.empty[0] });
-  nextBtn.hidden = false;
-  nextBtn.textContent = roomNo >= roomLimit() ? (mode === "sweep" ? "Close the sweep" : "Close the file") : "Next room";
-  nextBtn.focus();
+  drawRoom({ item, cell });
+  paintEyes();
+  if (item.id === "key") {
+    round.keyHidden = false;
+    round.solved = true;
+    drawRoom();
+    finish(true);
+    return;
+  }
+  const bridge = step.found;
+  stepNo += 1;
+  paintScore();
+  noteEl.textContent = CHAIN[stepNo].riddle;
+  enqueueSpeech(bridge);
+  enqueueSpeech(CHAIN[stepNo].riddle);
+  narrate(ASIDES[stepNo % ASIDES.length], "aside");
 }
 
-function miss(button, message, closeRoom) {
-  if (!round || round.solved) return;
+function miss(button) {
+  if (!round || round.solved || runOver) return;
   streak = 0;
   misses += 1;
   score = Math.max(0, score - PENALTY);
   paintScore();
+  drawRoom();
   gainEl.classList.add("down");
   gainEl.textContent = `-${PENALTY}`;
   if (button) {
     button.disabled = true;
     button.classList.add("miss");
-    const moved = agentShift();
-    const stolen = misses < MISSES ? takeHide() : null;
-    const fallback = stolen && moved
-      ? `That name was already drawn, so I moved the ${moved.name} and closed the ${stolen.item.name}. The object I kept is still missing.`
-      : stolen
-        ? `That name was already drawn, so I closed the ${stolen.item.name}. The object I kept is still missing.`
-        : moved
-          ? `That name was already drawn. I moved the ${moved.name}, and the object I kept is still missing.`
-          : "That name was already drawn. The object I kept is still missing.";
-    drawRoom();
-    paintEyes();
-    touchRoom();
-    if (misses < MISSES) {
-      playCue("wrong");
-      say(fallback, "wrong", publicNames([moved, stolen && stolen.item]));
-    }
   }
   if (misses >= MISSES) {
-    clearInterval(timerId);
     clearTimeout(agentTimer);
     round.solved = true;
     lockList();
     finish(false);
     return;
   }
-  if (closeRoom) {
-    clearInterval(timerId);
-    round.solved = true;
-    lockList();
-    drawRoom({ item: round.leftover, cell: round.empty[0] });
-    playCue("miss");
-    say(`${message} It was the ${round.leftover.name}.`, "timeout", publicNames([round.leftover]));
-    touchRoom();
-    nextBtn.hidden = false;
-    nextBtn.textContent = "Next room";
-    nextBtn.focus();
-  }
+  playCue("wrong");
+  narrate(TAUNTS[(misses - 1) % TAUNTS.length], "wrong");
 }
 
 function agentPlay() {
@@ -585,35 +509,18 @@ function agentHideKey() {
 function toggleFlag(id) {
   if (!round || round.solved || runOver) return;
   playCue("eye");
-  if (id === "key") {
-    const opening = round.keyHidden;
-    round.keyHidden = !round.keyHidden;
-    drawRoom();
-    paintEyes();
-    if (opening && round.agentHidKey) answerAgent();
-    return;
-  }
   if (id === "camera") {
     round.cameraHidden = !round.cameraHidden;
     drawRoom();
     paintEyes();
     return;
   }
-  const item = itemById(id);
-  if (!item || item === round.leftover) {
-    round.leftoverShut = !round.leftoverShut;
+  if (round.locked && round.locked.has(id)) {
     paintEyes();
-    if (!voiceLive) say("I am holding that name out of the picture. Choose it.", "hold", []);
     return;
   }
-  if (round.concealed.has(id)) {
-    round.concealed.delete(id);
-    drawRoom();
-    paintEyes();
-    if (round.agentHid.has(id)) answerAgent();
-    return;
-  }
-  round.concealed.add(id);
+  if (round.concealed.has(id)) round.concealed.delete(id);
+  else round.concealed.add(id);
   drawRoom();
   paintEyes();
 }
@@ -633,9 +540,8 @@ function itemById(id) {
 
 function flagOpen(id) {
   if (!round) return true;
-  if (id === "key") return !round.keyHidden;
   if (id === "camera") return !round.cameraHidden;
-  if (round.leftover && id === round.leftover.id) return !round.leftoverShut;
+  if (round.locked && round.locked.has(id)) return false;
   return !round.concealed.has(id);
 }
 
@@ -680,8 +586,8 @@ function lockList() {
 function paintScore() {
   scoreEl.textContent = String(score);
   missesEl.textContent = `${misses}/${MISSES}`;
-  roomNoEl.textContent = roomNo ? `${roomNo}/${roomLimit()}` : "—";
-  const best = readNumber(mode === "sweep" ? SWEEP_KEY : BEST_KEY);
+  roomNoEl.textContent = round ? `${Math.min(stepNo + 1, CHAIN.length)}/${CHAIN.length}` : "—";
+  const best = readNumber(BEST_KEY);
   bestEl.textContent = best ? String(best) : "—";
 }
 
@@ -694,52 +600,30 @@ function finish(cleared) {
   endingReward.hidden = true;
   endingReward.replaceChildren();
 
-  if (cleared && mode === "sweep") {
-    score += SWEEP_BONUS;
-    const previous = readNumber(SWEEP_KEY);
-    const beatBest = score > previous;
-    if (beatBest) writeNumber(SWEEP_KEY, score);
-    paintScore();
-    endingTitle.textContent = beatBest ? "A new sweep" : "The sweep is closed";
-    endingScore.textContent = `${score} points. ${SWEEP_BONUS} of that is for closing the sweep.`;
-    const fallback = beatBest
-      ? "The short list is closed, and this one beat the last sweep. The shade still waits in the full file."
-      : `The short list is closed. Best sweep stays ${previous || score}. The shade still waits in the full file.`;
-    showLine(endingCopy, fallback);
-  } else if (cleared) {
+  if (cleared) {
     score += CLEAR_BONUS;
-    const clears = readNumber(CLEARS_KEY) + 1;
     const previous = readNumber(BEST_KEY);
     const beatBest = score > previous;
-    writeNumber(CLEARS_KEY, clears);
+    writeNumber(CLEARS_KEY, readNumber(CLEARS_KEY) + 1);
     if (beatBest) writeNumber(BEST_KEY, score);
     paintScore();
     const figure = document.createElement("div");
-    figure.innerHTML = SHADE.svg();
+    figure.innerHTML = keyShape();
     const caption = document.createElement("p");
-    caption.textContent = SHADE.name;
+    caption.textContent = "Key";
     endingReward.append(figure, caption);
     endingReward.hidden = false;
-    endingTitle.textContent = clears === 1 ? "The file kept this" : beatBest ? "A new best" : "You closed the file";
-    endingScore.textContent = `${score} points. ${CLEAR_BONUS} of that is for closing the file. Open it again, or run a sweep.`;
-    const fallback = clears === 1
-      ? "The file is closed, and this shade is the reward I kept until the last room. It was never one of the objects in the picture."
-      : beatBest
-        ? "The file is closed, and this close beat the last one. The shade is still the reward for finishing every room."
-        : `The file is closed. Best close stays ${previous}, and the shade is still the reward for finishing every room.`;
-    showLine(endingCopy, fallback);
+    endingTitle.textContent = "You got out";
+    endingScore.textContent = `${score} points. ${CLEAR_BONUS} of that is for opening the door.`;
+    endingCopy.textContent = WIN_LINE;
+    enqueueSpeech(WIN_LINE);
   } else {
     paintScore();
-    const bestKey = mode === "sweep" ? SWEEP_KEY : BEST_KEY;
-    const best = readNumber(bestKey);
-    endingTitle.textContent = mode === "sweep" ? "The sweep closed" : "The file closed";
-    endingScore.textContent = `${score} points`;
-    const fallback = mode === "sweep"
-      ? `I closed the sweep before the list was finished. Rooms cleared: ${foundRooms}. ${best ? `Best sweep is ${best}.` : "The shade still waits in the full file."}`
-      : best
-        ? `I closed the file before the shade. Rooms cleared: ${foundRooms}. Best close is ${best}.`
-        : `I closed the file before the shade. Rooms cleared: ${foundRooms}.`;
-    showLine(endingCopy, fallback);
+    const best = readNumber(BEST_KEY);
+    endingTitle.textContent = "The door stayed shut";
+    endingScore.textContent = best ? `${score} points. Best escape is ${best}.` : `${score} points.`;
+    endingCopy.textContent = FAIL_LINE;
+    enqueueSpeech(FAIL_LINE);
   }
 
   endingEl.hidden = false;
@@ -804,8 +688,8 @@ function setAim(x, y) {
 
 function openingShot() {
   const span = travel();
-  const across = roomNo >= 6 ? 0.72 : 0.5;
-  const down = roomNo >= 6 ? 0.28 : 0.42;
+  const across = 0.5;
+  const down = 0.42;
   setAim(-span.x * across, -span.y * down);
 }
 
@@ -879,7 +763,7 @@ function paintVoiceStatus() {
       voiceStatus.textContent = "Voice is not speaking yet. Check the key and restart the server.";
       return;
     }
-    voiceStatus.textContent = "Voice is ready. Open the file to hear the agent.";
+    voiceStatus.textContent = "Voice is ready. Enter the room to hear the narrator.";
   }).catch(() => {
     voiceStatus.textContent = "";
   });
@@ -892,7 +776,7 @@ function placeCamera() {
 function paintCamera() {
   const shut = Boolean(round && round.cameraHidden);
   viewportEl.classList.toggle("camera-shut", shut);
-  viewportEl.classList.toggle("drift", Boolean(round) && roomNo >= 6 && !shut);
+  viewportEl.classList.toggle("drift", false);
 }
 
 function mountGimbal() {
@@ -1078,11 +962,29 @@ function say(fallback, event, names, target) {
 
 function showLine(el, line) {
   el.textContent = line;
-  if (voiceLive) {
-    pendingSay = { line, el };
-    return;
-  }
-  speak(++beat, line);
+  enqueueSpeech(line);
+}
+
+function narrate(fallback, event) {
+  const stamp = stepNo;
+  ask(event, []).then((data) => {
+    if (runOver || stamp !== stepNo) return;
+    const line = data && data.line && lineAllowed(data.line, []) ? data.line : fallback;
+    enqueueSpeech(line);
+  }).catch(() => {
+    if (!runOver && stamp === stepNo) enqueueSpeech(fallback);
+  });
+}
+
+function enqueueSpeech(line) {
+  if (!line || !prefOn(VOICE_KEY)) return;
+  speechQueue.push(line);
+  drainSpeech();
+}
+
+function drainSpeech() {
+  if (voiceLive || !speechQueue.length) return;
+  speak(++beat, speechQueue.shift());
 }
 
 function releaseVoice() {
@@ -1093,19 +995,20 @@ function releaseVoice() {
   }
   const job = pendingSay;
   pendingSay = null;
-  if (!job) return;
-  if (job.line) {
-    (job.el || noteEl).textContent = job.line;
-    speak(++beat, job.line);
+  if (job && job.line) {
+    if (job.el) job.el.textContent = job.line;
+    speechQueue.unshift(job.line);
+  } else if (job) {
+    say(job.fallback, job.event, job.names, job.target);
     return;
   }
-  say(job.fallback, job.event, job.names, job.target);
+  drainSpeech();
 }
 
 function speak(token, text) {
   if (!prefOn(VOICE_KEY) || !text) return;
   if (voiceLive) {
-    pendingSay = { line: text, el: noteEl };
+    speechQueue.push(text);
     return;
   }
   voiceLive = true;
@@ -1203,6 +1106,10 @@ function mirror() {
 function rug() {
   return svg(`<path d="M12 36h40l-4 10H16z" fill="#c9856a"/>`)();
 }
+function keyShape() {
+  return svg(`<circle cx="22" cy="28" r="8" stroke="#e2a13a" stroke-width="3" fill="none"/><path d="M30 28h16M40 28v6M46 28v4" stroke="#e2a13a" stroke-width="3" fill="none"/>`)();
+}
+
 function shade() {
   return svg(`<path d="M18 18h28l8 22H10z" fill="#f0c14a"/><path d="M32 40v12" stroke="#f7f1e6" stroke-width="3"/>`)();
 }

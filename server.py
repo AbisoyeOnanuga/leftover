@@ -27,12 +27,11 @@ NAMES = (
 )
 NAME_BY_ID = {name.lower(): name for name in NAMES}
 SYSTEM = (
-    "You are the agent of a scene file, speaking aloud. Reply with one JSON object only. "
-    "The line is one or two complete spoken sentences, not a fragment, not a caption. "
-    "Keep it under forty words. The speaker controls which objects the picture shows and has already hidden one. "
-    "Spooky and taunting, about the file, the room, or a listed object. "
-    "Do not address anyone. Do not say you, your, or breath. Do not say which object was kept. "
-    "Do not name an object that is not in the list you are given."
+    "You are the narrator of a locked room, speaking aloud. Reply with one JSON object only. "
+    "The line is one or two complete spoken sentences, not a fragment. "
+    "Keep it under forty words. Spooky, and trying to keep the door shut. "
+    "Do not address anyone. Do not say you, your, or breath. "
+    "Do not name an object. Do not give the answer to the riddle."
 )
 VOICE = {"error": ""}
 
@@ -143,16 +142,10 @@ def prompt_for(event, names, allowed_ids):
             "Do not say you, your, breath, or kept. JSON keys are id and line."
         )
     cues = {
-        "open": "A new room is open. The speaker controls what the picture shows, and one object stays hidden until its name is found. Do not name an object.",
-        "taunt": "You closed an eye. The sentence may name only the object in the list.",
-        "wrong": "They clicked a name that was already drawn. You may name only the objects in the list.",
-        "reopen": "They opened an eye you had closed. You may name only that object.",
-        "playerHide": "They hid something themselves. You may name only that object.",
-        "hold": "They shut an eye on a name you are holding out. Do not name it. Do not say it is the one you kept.",
-        "found": "They found the hidden object and it is now in the view. The speaker may name it.",
-        "timeout": "Their time ran out and the missing object is now in the view. You may name it.",
-        "close": "You are closing the file. Do not name an object.",
-        "shade": "They finished the file and you are showing the shade. You may name the Shade.",
+        "wrong": "They chose the wrong name. Taunt them for one or two sentences. Do not name any object. Do not reveal the answer.",
+        "aside": "A riddle is already on screen. Add one spooky sentence about the locked door. Do not name any object. Do not reveal the answer.",
+        "open": "The room has just been entered. One spooky sentence about the locked door. Do not name any object.",
+        "close": "They failed and the door stayed shut. One sentence. Do not name any object.",
     }
     cue = cues.get(event)
     if not cue:
