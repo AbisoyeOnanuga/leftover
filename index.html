@@ -43,13 +43,13 @@
   <main>
     <section class="stage" aria-labelledby="room-label">
       <div class="stage-bar">
-        <h2 id="room-label">Front</h2>
-        <button id="frame" type="button">Frame</button>
+        <h2 id="room-label">Camera</h2>
+        <button id="frame" type="button">Reset</button>
       </div>
       <p class="agent-line"><span class="who">Narrator</span> <span id="room-note">The door is locked.</span></p>
       <div id="viewport" class="viewport">
         <div id="gimbal" class="gimbal" aria-hidden="true"></div>
-        <div id="room" class="room" role="img" aria-label="Front view through the camera"></div>
+        <div id="room" class="room" role="img" aria-label="Camera view of the room"></div>
       </div>
     </section>
 
@@ -78,7 +78,7 @@
         <input id="sound-level" type="range" min="0" max="100" value="80">
       </label>
       <p id="voice-status" class="set-note"></p>
-      <p class="set-note">Drag or WASD looks across the room. Frame returns to the opening shot. The riddle stays on screen while a line is playing.</p>
+      <p class="set-note">Drag or WASD looks across the room. Reset returns to the opening shot. The riddle stays on screen while a line is playing.</p>
       <button value="close">Close</button>
     </form>
   </dialog>

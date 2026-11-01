@@ -188,10 +188,10 @@ main {
   position: absolute;
   left: 0;
   top: 0;
-  width: 128%;
-  height: 118%;
+  width: 104%;
+  height: 104%;
   margin: 0;
-  padding: 18px;
+  padding: 5% 6% 4%;
   background: var(--wall);
   transform: translate(var(--aim-x, 0px), var(--aim-y, 0px));
 }
@@ -207,8 +207,8 @@ main {
   background-image:
     linear-gradient(#8a5a3c, #8a5a3c),
     linear-gradient(180deg, rgba(255, 248, 236, 0.22), rgba(120, 78, 40, 0.08)),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='64' viewBox='0 0 56 64'%3E%3Crect width='27' height='64' fill='%23f3ddb4'/%3E%3Crect x='28' width='28' height='64' fill='%23e4c48f'/%3E%3Crect width='1' height='64' fill='%23b08455'/%3E%3Crect x='27' width='1' height='64' fill='%23b08455'/%3E%3Crect y='63' width='27' height='1' fill='%23a97848'/%3E%3Crect x='28' y='31' width='28' height='1' fill='%23a97848'/%3E%3C/svg%3E");
-  background-size: 100% 6px, 100% 100%, 56px 64px;
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='64' viewBox='0 0 36 64'%3E%3Crect width='17' height='64' fill='%23f3ddb4'/%3E%3Crect x='18' width='18' height='64' fill='%23e4c48f'/%3E%3Crect width='1' height='64' fill='%23b08455'/%3E%3Crect x='17' width='1' height='64' fill='%23b08455'/%3E%3Crect y='63' width='17' height='1' fill='%23a97848'/%3E%3Crect x='18' y='31' width='18' height='1' fill='%23a97848'/%3E%3C/svg%3E");
+  background-size: 100% 6px, 100% 100%, 36px 64px;
   background-repeat: no-repeat, no-repeat, repeat;
   background-position: top left, 0 0, 0 6px;
   pointer-events: none;
@@ -216,20 +216,21 @@ main {
 }
 
 .decor { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.garland { position: absolute; left: 3%; right: 3%; top: 8%; width: 94%; height: 72px; overflow: visible; }
-.garland .glow { opacity: 0.95; }
-.room.lamp-lit .garland .glow { opacity: 0.28; }
+.garland { position: absolute; left: 7%; right: 7%; top: 5%; width: 86%; height: auto; aspect-ratio: 1000 / 92; overflow: visible; }
+.garland .glow { opacity: 0.72; }
+.garland .lamp-bulb { filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 6px currentColor); }
+.room.lamp-lit .garland .glow { opacity: 0.5; }
+.room:not(.lamp-lit) .garland .glow { opacity: 0.95; }
+.room:not(.lamp-lit) .garland .lamp-bulb { filter: drop-shadow(0 0 3px #fff8ee) drop-shadow(0 0 8px currentColor) drop-shadow(0 0 16px currentColor); }
 .candle { position: absolute; left: 14%; top: 58%; width: 26px; height: 44px; }
 .candle .flame { transform-box: fill-box; transform-origin: center bottom; }
-.room:not(.lamp-lit) .garland { filter: brightness(1.35); }
-.room.mood-dark:not(.lamp-lit) .garland { filter: brightness(1.7); }
 @media (prefers-reduced-motion: no-preference) {
   .candle .flame { animation: flame 1.4s ease-in-out infinite; }
-  .garland .bulb { animation: bulb 1.6s ease-in-out infinite; }
+  .room:not(.lamp-lit) .garland .glow { animation: bulb 1.8s ease-in-out infinite; }
 }
 @keyframes bulb {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
+  50% { opacity: 0.55; }
 }
 @keyframes flame {
   0%, 100% { opacity: 1; transform: scaleY(1); }
@@ -240,15 +241,15 @@ main {
   position: absolute;
   z-index: 1;
   bottom: 66%;
-  width: 54px;
-  height: 112px;
+  width: 7%;
+  height: 88px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
 }
-.door-stand.left { left: 16%; }
-.door-stand.right { right: 30%; }
-.door-stand svg { width: 54px; height: 112px; }
+.door-stand.left { left: 18%; }
+.door-stand.right { right: 28%; }
+.door-stand svg { width: 100%; height: 88px; }
 .room.mood-dim { filter: brightness(0.9); }
 .room.mood-warm::after { opacity: 1; }
 .outliner.holding .object { cursor: progress; }
@@ -320,9 +321,9 @@ main {
 
 .prop { position: relative; z-index: 1; width: 48px; height: 48px; display: grid; place-items: center; }
 .prop svg { width: 100%; height: 100%; overflow: visible; }
-.prop[data-id="bed"] { width: 128px; height: 46px; }
+.prop[data-id="bed"] { width: min(128px, 100%); height: 46px; }
 .prop[data-id="crate"] { width: 42px; height: 36px; }
-.prop[data-id="rug"] { width: 108px; height: 30px; }
+.prop[data-id="rug"] { width: min(108px, 100%); height: 30px; }
 .prop[data-id="chair"] { width: 50px; height: 66px; }
 .prop[data-id="clock"] { width: 40px; height: 40px; }
 .prop[data-id="mirror"] { width: 36px; height: 60px; }

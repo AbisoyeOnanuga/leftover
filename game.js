@@ -327,36 +327,62 @@ function curvePoint(t, start, bend, end) {
   ];
 }
 
+function doorBlock() {
+  if (!round) return null;
+  const span = round.doorSide === "right" ? [65, 72] : [18, 25];
+  const at = (pct) => ((pct - 7) / 86) * 1000;
+  return [at(span[0]) - 36, at(span[1]) + 36];
+}
+
+function hangPieces(spans, block) {
+  const pieces = [];
+  spans.forEach(([from, to]) => {
+    if (!block || to < block[0] || from > block[1]) {
+      pieces.push([from, to]);
+      return;
+    }
+    if (from < block[0]) pieces.push([from, block[0]]);
+    if (to > block[1]) pieces.push([block[1], to]);
+  });
+  return pieces.filter(([from, to]) => to - from > 48);
+}
+
 function drawDecor() {
   const layer = document.createElement("div");
   layer.className = "decor";
   layer.setAttribute("aria-hidden", "true");
-  const bulbColors = ["#e2a13a", "#6f5a78", "#6f9a78", "#c9856a"];
-  const lightStart = [12, 8];
-  const lightBend = [320, 20];
-  const lightEnd = [628, 8];
-  const bulbs = [];
-  for (let i = 0; i <= 18; i += 1) {
-    const [x, y] = curvePoint(i / 18, lightStart, lightBend, lightEnd);
-    const color = bulbColors[i % bulbColors.length];
-    const hang = y + 5;
-    bulbs.push(`<circle class="glow" cx="${x.toFixed(1)}" cy="${hang.toFixed(1)}" r="6.5" fill="${color}"/>`);
-    bulbs.push(`<circle class="bulb" cx="${x.toFixed(1)}" cy="${hang.toFixed(1)}" r="2.6" fill="${color}" style="animation-delay:${(i % 4) * 0.28}s"/>`);
-  }
+  const bulbColors = ["#ff4d4d", "#3dff7a", "#4da3ff"];
   const flagColors = ["#e2a13a", "#6f5a78", "#c9856a"];
-  const flagStart = [24, 30];
-  const flagBend = [320, 46];
-  const flagEnd = [616, 30];
+  const block = doorBlock();
+  const lightPieces = hangPieces([[40, 360], [360, 680], [680, 960]], block);
+  const flagPieces = hangPieces([[50, 370], [370, 670], [670, 950]], block);
+  const wires = [];
+  const bulbs = [];
   const flags = [];
-  for (let i = 0; i <= 16; i += 1) {
-    const [x, y] = curvePoint(i / 16, flagStart, flagBend, flagEnd);
-    flags.push(`<path d="M${x.toFixed(1)} ${y.toFixed(1)} l4.5 8 h-9 z" fill="${flagColors[i % flagColors.length]}"/>`);
-  }
+  lightPieces.forEach(([from, to]) => {
+    const sag = 16;
+    wires.push(`<path d="M${from} 12 Q${((from + to) / 2).toFixed(1)} ${12 + sag} ${to} 12" fill="none" stroke="#5c3a28" stroke-width="1.5"/>`);
+    const steps = Math.max(2, Math.round((to - from) / 78));
+    for (let i = 0; i <= steps; i += 1) {
+      const [x, y] = curvePoint(i / steps, [from, 12], [(from + to) / 2, 12 + sag], [to, 12]);
+      const color = bulbColors[(i + Math.round(from)) % bulbColors.length];
+      const hang = y + 6;
+      bulbs.push(`<g class="lamp-bulb" style="color:${color}"><circle class="glow" cx="${x.toFixed(1)}" cy="${hang.toFixed(1)}" r="9" fill="${color}"/><circle class="bulb" cx="${x.toFixed(1)}" cy="${hang.toFixed(1)}" r="2.7" fill="${color}"/><circle cx="${x.toFixed(1)}" cy="${hang.toFixed(1)}" r="1" fill="#fff8ee"/></g>`);
+    }
+  });
+  flagPieces.forEach(([from, to]) => {
+    const sag = 18;
+    wires.push(`<path d="M${from} 40 Q${((from + to) / 2).toFixed(1)} ${40 + sag} ${to} 40" fill="none" stroke="#8a5a3c" stroke-width="1.5"/>`);
+    const steps = Math.max(2, Math.round((to - from) / 70));
+    for (let i = 0; i <= steps; i += 1) {
+      const [x, y] = curvePoint(i / steps, [from, 40], [(from + to) / 2, 40 + sag], [to, 40]);
+      flags.push(`<path d="M${x.toFixed(1)} ${y.toFixed(1)} l3.2 7 h-6.4 z" fill="${flagColors[i % flagColors.length]}"/>`);
+    }
+  });
   layer.innerHTML = `
-    <svg class="garland" viewBox="0 0 640 64" aria-hidden="true">
-      <path d="M12 8 Q320 20 628 8" fill="none" stroke="#5c3a28" stroke-width="1.4"/>
+    <svg class="garland" viewBox="0 0 1000 92" aria-hidden="true">
+      ${wires.join("")}
       ${bulbs.join("")}
-      <path d="M24 30 Q320 46 616 30" fill="none" stroke="#8a5a3c" stroke-width="1.6"/>
       ${flags.join("")}
     </svg>
     <svg class="candle" viewBox="0 0 64 64" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="32" cy="50" rx="14" ry="5" fill="#e2a13a" opacity="0.28"/><path d="M28 26h8v20h-8z" fill="#f7f1e6"/><path d="M24 46h16v6H24z" fill="#c9856a"/><path class="flame" d="M32 26c-5-8-2-14 0-18 2 4 5 10 0 18z" fill="#e2a13a"/></svg>
@@ -469,11 +495,15 @@ function objectFor(id) {
 
 function placeFurniture(furniture) {
   const placement = new Map();
-  const standing = furniture.filter((item) => item.id === "bed" || item.id === "chair" || item.id === "crate");
+  const bed = furniture.find((item) => item.id === "bed");
+  const chair = furniture.find((item) => item.id === "chair");
+  const crate = furniture.find((item) => item.id === "crate");
   const rug = furniture.find((item) => item.id === "rug");
-  const back = shuffle([4, 5, 6, 7]);
-  standing.forEach((item, index) => placement.set(back[index], item));
-  if (rug) placement.set(shuffle([8, 9, 10, 11])[0], rug);
+  const inner = shuffle([5, 6]);
+  const outer = shuffle([4, 7]);
+  if (bed) placement.set(inner[0], bed);
+  [chair, crate].filter(Boolean).forEach((item, index) => placement.set([inner[1], ...outer][index], item));
+  if (rug) placement.set(shuffle([9, 10])[0], rug);
   return placement;
 }
 
@@ -952,10 +982,65 @@ function travel() {
   };
 }
 
+function sceneBounds() {
+  const origin = roomEl.getBoundingClientRect();
+  const nodes = roomEl.querySelectorAll(".prop, .door-stand, .candle, .pumpkin, .sconce");
+  if (!nodes.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  nodes.forEach((node) => {
+    const box = node.getBoundingClientRect();
+    minX = Math.min(minX, box.left - origin.left);
+    minY = Math.min(minY, box.top - origin.top);
+    maxX = Math.max(maxX, box.right - origin.left);
+    maxY = Math.max(maxY, box.bottom - origin.top);
+  });
+  return { minX, minY, maxX, maxY };
+}
+
+function holdScene(x, y) {
+  const span = travel();
+  const viewW = viewportEl.clientWidth;
+  const viewH = viewportEl.clientHeight;
+  const box = sceneBounds();
+  if (!box) return { x, y };
+  const margin = 10;
+  let minX = margin - box.minX;
+  let maxX = viewW - margin - box.maxX;
+  let minY = margin - box.minY;
+  let maxY = viewH - margin - box.maxY;
+  if (minX > maxX) {
+    const mid = (minX + maxX) / 2;
+    minX = mid;
+    maxX = mid;
+  }
+  if (minY > maxY) {
+    const mid = (minY + maxY) / 2;
+    minY = mid;
+    maxY = mid;
+  }
+  minX = Math.max(minX, -span.x);
+  maxX = Math.min(maxX, 0);
+  minY = Math.max(minY, -span.y);
+  maxY = Math.min(maxY, 0);
+  if (minX > maxX) minX = maxX = Math.max(-span.x, Math.min(0, (minX + maxX) / 2));
+  if (minY > maxY) minY = maxY = Math.max(-span.y, Math.min(0, (minY + maxY) / 2));
+  return {
+    x: Math.max(minX, Math.min(maxX, x)),
+    y: Math.max(minY, Math.min(maxY, y))
+  };
+}
+
 function setAim(x, y) {
   const span = travel();
-  aimX = Math.max(-span.x, Math.min(0, x));
-  aimY = Math.max(-span.y, Math.min(0, y));
+  const held = holdScene(
+    Math.max(-span.x, Math.min(0, x)),
+    Math.max(-span.y, Math.min(0, y))
+  );
+  aimX = held.x;
+  aimY = held.y;
   viewportEl.style.setProperty("--aim-x", `${aimX}px`);
   viewportEl.style.setProperty("--aim-y", `${aimY}px`);
 }
@@ -963,7 +1048,7 @@ function setAim(x, y) {
 function openingShot() {
   const span = travel();
   const across = 0.5;
-  const down = 0.42;
+  const down = 0.5;
   setAim(-span.x * across, -span.y * down);
 }
 
