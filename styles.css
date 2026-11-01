@@ -110,7 +110,19 @@ main {
   font-size: 16px;
 }
 
-.agent-line { max-width: 42ch; margin-left: auto; text-align: right; }
+.agent-line {
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(1.35em * 5);
+  margin: 10px 0 0;
+  padding: 0 14px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.35;
+  text-align: left;
+  contain: strict;
+}
 .spoken .word { opacity: 0; }
 .spoken .word.on { opacity: 1; }
 .who { color: var(--lamp); font-family: var(--display); margin-right: 6px; }
@@ -192,41 +204,51 @@ main {
   top: 34%;
   bottom: 0;
   height: auto;
-  background:
-    linear-gradient(#8a5a3c, #8a5a3c) top / 100% 5px no-repeat,
-    repeating-linear-gradient(90deg, rgba(120, 78, 40, 0.38) 0 2px, transparent 2px 72px),
-    repeating-linear-gradient(180deg, transparent 0 26px, rgba(120, 78, 40, 0.22) 26px 28px),
-    linear-gradient(180deg, #f3ddb4, #e4c48f);
-  opacity: 1;
+  background-image:
+    linear-gradient(#8a5a3c, #8a5a3c),
+    linear-gradient(180deg, rgba(255, 248, 236, 0.22), rgba(120, 78, 40, 0.08)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='64' viewBox='0 0 56 64'%3E%3Crect width='27' height='64' fill='%23f3ddb4'/%3E%3Crect x='28' width='28' height='64' fill='%23e4c48f'/%3E%3Crect width='1' height='64' fill='%23b08455'/%3E%3Crect x='27' width='1' height='64' fill='%23b08455'/%3E%3Crect y='63' width='27' height='1' fill='%23a97848'/%3E%3Crect x='28' y='31' width='28' height='1' fill='%23a97848'/%3E%3C/svg%3E");
+  background-size: 100% 6px, 100% 100%, 56px 64px;
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-position: top left, 0 0, 0 6px;
   pointer-events: none;
   z-index: 0;
 }
 
 .decor { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.bunting { position: absolute; left: 3%; right: 3%; top: 1.5%; width: 94%; height: 34px; }
-.candle { position: absolute; left: 14%; top: 58%; width: 64px; height: 64px; }
+.garland { position: absolute; left: 3%; right: 3%; top: 8%; width: 94%; height: 72px; overflow: visible; }
+.garland .glow { opacity: 0.95; }
+.room.lamp-lit .garland .glow { opacity: 0.28; }
+.candle { position: absolute; left: 14%; top: 58%; width: 26px; height: 44px; }
 .candle .flame { transform-box: fill-box; transform-origin: center bottom; }
+.room:not(.lamp-lit) .garland { filter: brightness(1.35); }
+.room.mood-dark:not(.lamp-lit) .garland { filter: brightness(1.7); }
 @media (prefers-reduced-motion: no-preference) {
   .candle .flame { animation: flame 1.4s ease-in-out infinite; }
+  .garland .bulb { animation: bulb 1.6s ease-in-out infinite; }
+}
+@keyframes bulb {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 @keyframes flame {
   0%, 100% { opacity: 1; transform: scaleY(1); }
   50% { opacity: 0.65; transform: scaleY(0.8); }
 }
-.pumpkin { position: absolute; left: 70%; top: 56%; width: 72px; height: 72px; }
+.pumpkin { position: absolute; left: 70%; top: 56%; width: 46px; height: 42px; }
 .door-stand {
   position: absolute;
   z-index: 1;
   bottom: 66%;
-  width: 72px;
-  height: 108px;
+  width: 54px;
+  height: 112px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
 }
-.door-stand.left { left: 18%; }
-.door-stand.right { right: 28%; }
-.door-stand svg { width: 64px; height: 108px; }
+.door-stand.left { left: 16%; }
+.door-stand.right { right: 30%; }
+.door-stand svg { width: 54px; height: 112px; }
 .room.mood-dim { filter: brightness(0.9); }
 .room.mood-warm::after { opacity: 1; }
 .outliner.holding .object { cursor: progress; }
@@ -296,8 +318,20 @@ main {
 .cell.ground { align-items: flex-end; }
 .cell.front { align-items: flex-start; }
 
-.prop { position: relative; z-index: 1; width: 72px; height: 72px; display: grid; place-items: center; }
-.prop svg { width: 64px; height: 64px; overflow: visible; }
+.prop { position: relative; z-index: 1; width: 48px; height: 48px; display: grid; place-items: center; }
+.prop svg { width: 100%; height: 100%; overflow: visible; }
+.prop[data-id="bed"] { width: 128px; height: 46px; }
+.prop[data-id="crate"] { width: 42px; height: 36px; }
+.prop[data-id="rug"] { width: 108px; height: 30px; }
+.prop[data-id="chair"] { width: 50px; height: 66px; }
+.prop[data-id="clock"] { width: 40px; height: 40px; }
+.prop[data-id="mirror"] { width: 36px; height: 60px; }
+.prop[data-id="frame"] { width: 46px; height: 54px; }
+.prop[data-id="vase"] { width: 32px; height: 50px; }
+.prop[data-id="stool"] { width: 44px; height: 42px; }
+.prop[data-id="plant"] { width: 48px; height: 58px; }
+.prop[data-id="lamp"] { width: 44px; height: 52px; }
+.prop[data-id="key"] { width: 36px; height: 24px; }
 
 .prop.arrive, .prop.shifted { animation: arrive 420ms ease-out; filter: drop-shadow(0 0 8px var(--lamp)); }
 

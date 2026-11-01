@@ -319,14 +319,48 @@ function begin() {
   askSteer("open");
 }
 
+function curvePoint(t, start, bend, end) {
+  const rest = 1 - t;
+  return [
+    rest * rest * start[0] + 2 * rest * t * bend[0] + t * t * end[0],
+    rest * rest * start[1] + 2 * rest * t * bend[1] + t * t * end[1]
+  ];
+}
+
 function drawDecor() {
   const layer = document.createElement("div");
   layer.className = "decor";
   layer.setAttribute("aria-hidden", "true");
+  const bulbColors = ["#e2a13a", "#6f5a78", "#6f9a78", "#c9856a"];
+  const lightStart = [12, 8];
+  const lightBend = [320, 20];
+  const lightEnd = [628, 8];
+  const bulbs = [];
+  for (let i = 0; i <= 18; i += 1) {
+    const [x, y] = curvePoint(i / 18, lightStart, lightBend, lightEnd);
+    const color = bulbColors[i % bulbColors.length];
+    const hang = y + 5;
+    bulbs.push(`<circle class="glow" cx="${x.toFixed(1)}" cy="${hang.toFixed(1)}" r="6.5" fill="${color}"/>`);
+    bulbs.push(`<circle class="bulb" cx="${x.toFixed(1)}" cy="${hang.toFixed(1)}" r="2.6" fill="${color}" style="animation-delay:${(i % 4) * 0.28}s"/>`);
+  }
+  const flagColors = ["#e2a13a", "#6f5a78", "#c9856a"];
+  const flagStart = [24, 30];
+  const flagBend = [320, 46];
+  const flagEnd = [616, 30];
+  const flags = [];
+  for (let i = 0; i <= 16; i += 1) {
+    const [x, y] = curvePoint(i / 16, flagStart, flagBend, flagEnd);
+    flags.push(`<path d="M${x.toFixed(1)} ${y.toFixed(1)} l4.5 8 h-9 z" fill="${flagColors[i % flagColors.length]}"/>`);
+  }
   layer.innerHTML = `
-    <svg class="bunting" viewBox="0 0 320 28" preserveAspectRatio="none" aria-hidden="true"><path d="M0 3h320" fill="none" stroke="#8a5a3c" stroke-width="2"/><path d="M8 4l10 18h-20z" fill="#e2a13a"/><path d="M40 4l10 18h-20z" fill="#6f5a78"/><path d="M72 4l10 18h-20z" fill="#c9856a"/><path d="M104 4l10 18h-20z" fill="#e2a13a"/><path d="M136 4l10 18h-20z" fill="#6f5a78"/><path d="M168 4l10 18h-20z" fill="#c9856a"/><path d="M200 4l10 18h-20z" fill="#e2a13a"/><path d="M232 4l10 18h-20z" fill="#6f5a78"/><path d="M264 4l10 18h-20z" fill="#c9856a"/><path d="M296 4l10 18h-20z" fill="#e2a13a"/></svg>
-    <svg class="candle" viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="32" cy="50" rx="14" ry="5" fill="#e2a13a" opacity="0.28"/><path d="M28 26h8v20h-8z" fill="#f7f1e6"/><path d="M24 46h16v6H24z" fill="#c9856a"/><path class="flame" d="M32 26c-5-8-2-14 0-18 2 4 5 10 0 18z" fill="#e2a13a"/></svg>
-    <svg class="pumpkin" viewBox="0 0 64 64" aria-hidden="true"><path d="M30 16h4v6h-4z" fill="#6f9a78"/><path d="M34 12h6v4h-6z" fill="#6f9a78"/><path d="M20 28h8v22h-8z" fill="#c9856a"/><path d="M28 24h8v28h-8z" fill="#e2a13a"/><path d="M36 28h8v22h-8z" fill="#c9856a"/><path d="M26 34h3v3h-3zM35 34h3v3h-3zM29 42h8v2h-8z" fill="#5c3a28"/></svg>`;
+    <svg class="garland" viewBox="0 0 640 64" aria-hidden="true">
+      <path d="M12 8 Q320 20 628 8" fill="none" stroke="#5c3a28" stroke-width="1.4"/>
+      ${bulbs.join("")}
+      <path d="M24 30 Q320 46 616 30" fill="none" stroke="#8a5a3c" stroke-width="1.6"/>
+      ${flags.join("")}
+    </svg>
+    <svg class="candle" viewBox="0 0 64 64" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="32" cy="50" rx="14" ry="5" fill="#e2a13a" opacity="0.28"/><path d="M28 26h8v20h-8z" fill="#f7f1e6"/><path d="M24 46h16v6H24z" fill="#c9856a"/><path class="flame" d="M32 26c-5-8-2-14 0-18 2 4 5 10 0 18z" fill="#e2a13a"/></svg>
+    <svg class="pumpkin" viewBox="0 0 64 64" preserveAspectRatio="none" aria-hidden="true"><path d="M30 16h4v6h-4z" fill="#6f9a78"/><path d="M34 12h6v4h-6z" fill="#6f9a78"/><path d="M20 28h8v22h-8z" fill="#c9856a"/><path d="M28 24h8v28h-8z" fill="#e2a13a"/><path d="M36 28h8v22h-8z" fill="#c9856a"/><path d="M26 34h3v3h-3zM35 34h3v3h-3zM29 42h8v2h-8z" fill="#5c3a28"/></svg>`;
   roomEl.append(layer);
 }
 
@@ -1575,8 +1609,8 @@ function shuffle(items) {
   return copy;
 }
 
-function svg(body) {
-  return () => `<svg viewBox="0 0 64 64" aria-hidden="true">${body}</svg>`;
+function svg(body, box = "0 0 64 64") {
+  return () => `<svg viewBox="${box}" preserveAspectRatio="none" aria-hidden="true">${body}</svg>`;
 }
 
 function lamp() {
@@ -1586,13 +1620,13 @@ function vase() {
   return svg(`<path d="M26 14h12l2 8h-16z" fill="#f7f1e6"/><path d="M24 22h16c2 8-2 18-8 20s-10-12-8-20z" fill="#d7c4a3"/>`)();
 }
 function chair() {
-  return svg(`<path d="M20 16h24v18H20z" fill="#8a5a3c"/><path d="M18 34h28v5H18z" fill="#c9856a"/><path d="M22 39v12M42 39v12" stroke="#5c3a28" stroke-width="3"/>`)();
+  return svg(`<path d="M12 2h40v26H12z" fill="#8a5a3c"/><path d="M8 28h48v8H8z" fill="#c9856a"/><path d="M16 36v26M48 36v26" stroke="#5c3a28" stroke-width="4"/>`)();
 }
 function bed() {
-  return svg(`<path d="M12 34h40v12H12z" fill="#6f5a78"/><path d="M12 28h14v8H12z" fill="#f7f1e6"/><path d="M14 46h36" stroke="#2a2430" stroke-width="3"/>`)();
+  return svg(`<path d="M2 12h60v14H2z" fill="#6f5a78"/><path d="M2 4h18v10H2z" fill="#f7f1e6"/><path d="M2 26h60v8H2z" fill="#2a2430"/>`, "0 0 64 36")();
 }
 function door() {
-  return svg(`<path d="M20 10h24v44H20z" fill="#5c3a28"/><path d="M23 13h18v38H23z" fill="#8a5a3c"/><circle cx="36" cy="34" r="2" fill="#e2a13a"/>`)();
+  return svg(`<path d="M4 0h56v120H4z" fill="#5c3a28"/><path d="M8 4h48v112H8z" fill="#8a5a3c"/><circle cx="46" cy="68" r="3.5" fill="#e2a13a"/>`, "0 0 64 120")();
 }
 function plant() {
   return svg(`<ellipse cx="32" cy="22" rx="12" ry="9" fill="#6f9a78"/><ellipse cx="24" cy="26" rx="7" ry="6" fill="#8fb59a"/><path d="M30 30h4v10" fill="#5c3a28"/><path d="M22 42h20l-2 8H24z" fill="#c9856a"/>`)();
@@ -1604,7 +1638,7 @@ function clock() {
   return svg(`<circle cx="32" cy="30" r="16" fill="#f7f1e6"/><circle cx="32" cy="30" r="13" fill="#1c2430"/><path d="M32 22v8l7 4" stroke="#e2a13a" stroke-width="2" fill="none"/><circle cx="32" cy="30" r="1.5" fill="#e2a13a"/>`)();
 }
 function crate() {
-  return svg(`<path d="M14 22h36v24H14z" fill="#8a5a3c"/><path d="M14 30h36M32 22v24" stroke="#5c3a28" stroke-width="3"/>`)();
+  return svg(`<path d="M2 4h60v48H2z" fill="#8a5a3c"/><path d="M2 18h60M32 4v48" stroke="#5c3a28" stroke-width="4"/>`, "0 0 64 56")();
 }
 function stool() {
   return svg(`<ellipse cx="32" cy="26" rx="16" ry="6" fill="#c9856a"/><path d="M20 28l-4 18M44 28l4 18M26 30l2 16M38 30l-2 16" stroke="#5c3a28" stroke-width="3"/>`)();
@@ -1613,7 +1647,7 @@ function mirror() {
   return svg(`<ellipse cx="32" cy="26" rx="14" ry="18" fill="#c9856a"/><ellipse cx="32" cy="26" rx="10" ry="14" fill="#9bb0c4"/><path d="M28 44h8v8h-8z" fill="#8a5a3c"/>`)();
 }
 function rug() {
-  return svg(`<path d="M14 34v-5M22 34v-5M32 34v-5M42 34v-5M50 34v-5M14 54v5M22 54v5M32 54v5M42 54v5M50 54v5" stroke="#c9856a" stroke-width="2"/><rect x="12" y="34" width="40" height="20" rx="2" fill="#6f3d4a"/><rect x="16" y="38" width="32" height="12" fill="none" stroke="#e2a13a" stroke-width="2"/><ellipse cx="32" cy="44" rx="5" ry="3" fill="#c9856a"/>`)();
+  return svg(`<path d="M8 6v-4M20 6v-4M32 6v-4M44 6v-4M56 6v-4M8 22v4M20 22v4M32 22v4M44 22v4M56 22v4" stroke="#c9856a" stroke-width="2"/><rect x="4" y="6" width="56" height="16" rx="2" fill="#6f3d4a"/><rect x="8" y="9" width="48" height="10" fill="none" stroke="#e2a13a" stroke-width="2"/>`, "0 0 64 28")();
 }
 function keyShape() {
   return svg(`<circle cx="22" cy="28" r="8" fill="#e2a13a"/><circle cx="22" cy="28" r="3" fill="#1c1814"/><path d="M30 26h16v4H30zM40 30v6h4v-6zM46 30v4h4v-4z" fill="#e2a13a"/>`)();
