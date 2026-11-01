@@ -46,24 +46,42 @@ The model name has to be a Gemma model. `OLLAMA_MODEL` defaults to `gemma3:4b`. 
 
 ## The public page
 
-A Render **static site** only publishes the files. It does not run `server.py`, so it has no voice and no Gemma. The written riddles still play.
-
-For that static site:
+Use a Render **Web Service**, not a static site. The service runs `python server.py`.
 
 | Field | Value |
 | --- | --- |
-| Build command | Leave empty. There is no build. |
-| Publish directory | `.` |
-| Environment variables | None. A key in a static site would be copied into the public files. |
+| Runtime | Python |
+| Build command | `pip install -r requirements.txt` |
+| Start command | `python server.py` |
 
-Voice and a hosted model need a **Web Service** later, not this static site. Start command `python server.py`, with `HOST` set to `0.0.0.0`. Render sets `PORT`. Put `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, and `DO_INFERENCE_KEY` in that service's environment, not in the repo. Anyone who can open the site can ask it to speak, so that spends the voice account.
+Environment variables on that service, not in the repo:
+
+| Key | Value |
+| --- | --- |
+| `HOST` | `0.0.0.0` |
+| `ELEVENLABS_API_KEY` | The secret shown when the key was created |
+| `ELEVENLABS_VOICE_ID` | The voice id from the same account |
+| `DO_INFERENCE_KEY` | The Gradient model access key |
+| `DO_MODEL` | `gemma-4-31B-it` |
+
+Leave `PORT` unset. Render sets it. Leave `OLLAMA_URL` unset on Render. There is no Ollama on that machine, so a failed DigitalOcean call uses the written order.
+
+The free ElevenLabs plan includes 10,000 credits a month. Flash, the model this game uses, is discounted to between half a credit and one credit per character, so the month covers at least 10,000 characters. One full game is about 2,000 characters. If the account runs out, the lines stay on screen and the intro says the voice account is out of characters.
 
 ## Gemma on DigitalOcean
 
-Serverless inference can serve Gemma without a GPU droplet. The model id for that call is `gemma-4-31B-it`. Keeping that id, or the local `gemma3:4b`, is what keeps the project a Gemma project. Pointing the same key at another model on that catalog drops the Gemma entry.
+Gradient is DigitalOcean's model platform. Serverless inference calls Gemma without a GPU droplet. The model id is `gemma-4-31B-it`. Keeping that id, or the local `gemma3:4b`, is what keeps the project a Gemma project.
 
-Create a model access key in Gradient and paste it as `DO_INFERENCE_KEY`. Leave it blank to stay on Ollama. The catalog lists models an account cannot call, so a key can be valid and still be refused for Gemma. When that happens the written order plays and the intro says so.
+1. Sign in at [cloud.digitalocean.com](https://cloud.digitalocean.com).
+2. Open **Gradient**, then **Serverless inference**, then **Model access keys**. The direct page is [Manage model access keys](https://docs.digitalocean.com/products/inference/how-to/manage-model-access-keys/).
+3. Choose **Create model access key**. Name it `leftover`.
+4. On **Foundation models**, choose **Select models** and pick **Gemma 4** (`gemma-4-31B-it`). Leave the other models off.
+5. Leave the VPC empty so Render can reach the public endpoint `https://inference.do-ai.run`.
+6. Create the key and copy the secret once. It is shown only then.
+7. Paste that secret as `DO_INFERENCE_KEY` on the Render service. Set `DO_MODEL` to `gemma-4-31B-it`.
 
-The site can stay on Render. DigitalOcean is only the model call. One app host is enough.
+This key is a model access key. It is not the account API token from Settings. The catalog lists models an account cannot call, so a valid key can still be refused for Gemma. When that happens the written order plays and the intro says so.
+
+The site stays on Render. DigitalOcean is only the model call. One app host is enough. Do not create a GPU droplet.
 
 Planning notes live in `hacktoberfest-week4/`. `.gitignore` keeps that folder, and `.env`, out of any later commit.

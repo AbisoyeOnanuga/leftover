@@ -1125,6 +1125,9 @@ function paintVoiceStatus() {
     if (!data.ready) {
       notes.push("Voice is off. Paste an ElevenLabs key and a voice id into .env, then restart the server. The lines stay on screen.");
       missing.push("Voice is off, so the lines stay on screen.");
+    } else if (data.error === "quota") {
+      notes.push("The voice account is out of characters for this month. The lines stay on screen.");
+      missing.push("The voice account is out of characters. The lines stay on screen.");
     } else if (data.error === "401" || data.error === "key-id") {
       notes.push("ElevenLabs rejected that value. Paste the secret key shown when the key was created, not the key id from the list, then restart the server.");
       missing.push("Voice was rejected. The lines stay on screen.");

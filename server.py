@@ -489,6 +489,8 @@ def speak_mp3(text, previous="", following=""):
         detail = err.read().decode("utf-8", "replace")
         if "api_key_id_used_as_api_key" in detail:
             VOICE["error"] = "key-id"
+        elif "quota_exceeded" in detail or err.code == 429:
+            VOICE["error"] = "quota"
         else:
             VOICE["error"] = str(err.code)
         write_log({"event": "speak", "status": err.code, "chars": len(text)})
