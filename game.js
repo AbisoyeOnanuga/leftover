@@ -330,8 +330,8 @@ function curvePoint(t, start, bend, end) {
 function doorBlock() {
   if (!round) return null;
   const span = round.doorSide === "right" ? [65, 72] : [18, 25];
-  const at = (pct) => ((pct - 7) / 86) * 1000;
-  return [at(span[0]) - 36, at(span[1]) + 36];
+  const at = (pct) => ((pct - 2) / 94) * 1000;
+  return [at(span[0]) - 16, at(span[1]) + 16];
 }
 
 function hangPieces(spans, block) {
@@ -354,8 +354,8 @@ function drawDecor() {
   const bulbColors = ["#ff4d4d", "#3dff7a", "#4da3ff"];
   const flagColors = ["#e2a13a", "#6f5a78", "#c9856a"];
   const block = doorBlock();
-  const lightPieces = hangPieces([[40, 360], [360, 680], [680, 960]], block);
-  const flagPieces = hangPieces([[50, 370], [370, 670], [670, 950]], block);
+  const lightPieces = hangPieces([[12, 330], [330, 660], [660, 988]], block);
+  const flagPieces = hangPieces([[18, 340], [340, 660], [660, 982]], block);
   const wires = [];
   const bulbs = [];
   const flags = [];
@@ -385,9 +385,13 @@ function drawDecor() {
       ${bulbs.join("")}
       ${flags.join("")}
     </svg>
-    <svg class="candle" viewBox="0 0 64 64" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="32" cy="50" rx="14" ry="5" fill="#e2a13a" opacity="0.28"/><path d="M28 26h8v20h-8z" fill="#f7f1e6"/><path d="M24 46h16v6H24z" fill="#c9856a"/><path class="flame" d="M32 26c-5-8-2-14 0-18 2 4 5 10 0 18z" fill="#e2a13a"/></svg>
     <svg class="pumpkin" viewBox="0 0 64 64" preserveAspectRatio="none" aria-hidden="true"><path d="M30 16h4v6h-4z" fill="#6f9a78"/><path d="M34 12h6v4h-6z" fill="#6f9a78"/><path d="M20 28h8v22h-8z" fill="#c9856a"/><path d="M28 24h8v28h-8z" fill="#e2a13a"/><path d="M36 28h8v22h-8z" fill="#c9856a"/><path d="M26 34h3v3h-3zM35 34h3v3h-3zM29 42h8v2h-8z" fill="#5c3a28"/></svg>`;
   roomEl.append(layer);
+  const candle = document.createElement("div");
+  candle.className = "candle";
+  candle.setAttribute("aria-hidden", "true");
+  candle.innerHTML = `<svg viewBox="0 0 64 64" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="32" cy="50" rx="14" ry="5" fill="#e2a13a" opacity="0.28"/><path d="M28 26h8v20h-8z" fill="#f7f1e6"/><path d="M24 46h16v6H24z" fill="#c9856a"/><path class="flame" d="M32 26c-5-8-2-14 0-18 2 4 5 10 0 18z" fill="#e2a13a"/></svg>`;
+  roomEl.append(candle);
 }
 
 function currentStep() {

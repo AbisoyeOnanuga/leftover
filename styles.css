@@ -216,13 +216,14 @@ main {
 }
 
 .decor { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.garland { position: absolute; left: 7%; right: 7%; top: 5%; width: 86%; height: auto; aspect-ratio: 1000 / 92; overflow: visible; }
+.garland { position: absolute; left: 2%; top: 5%; width: 94%; height: auto; aspect-ratio: 1000 / 92; overflow: visible; }
 .garland .glow { opacity: 0.72; }
 .garland .lamp-bulb { filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 6px currentColor); }
 .room.lamp-lit .garland .glow { opacity: 0.5; }
 .room:not(.lamp-lit) .garland .glow { opacity: 0.95; }
 .room:not(.lamp-lit) .garland .lamp-bulb { filter: drop-shadow(0 0 3px #fff8ee) drop-shadow(0 0 8px currentColor) drop-shadow(0 0 16px currentColor); }
-.candle { position: absolute; left: 14%; top: 58%; width: 26px; height: 44px; }
+.candle { position: absolute; z-index: 2; left: 9%; top: 76%; width: 26px; height: 44px; pointer-events: none; }
+.candle svg { width: 100%; height: 100%; display: block; }
 .candle .flame { transform-box: fill-box; transform-origin: center bottom; }
 @media (prefers-reduced-motion: no-preference) {
   .candle .flame { animation: flame 1.4s ease-in-out infinite; }
