@@ -1,4 +1,4 @@
-"""Serve Leftover and POST /act.
+"""Serve Hidden Objects and POST /act.
 
 The browser never calls a model or a voice service. A hide asks the model for
 one id from the list the page sent, plus one sentence. Other events ask for
@@ -594,7 +594,7 @@ def main():
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8765"))
     server = ThreadingHTTPServer((host, port), Handler)
-    print(f"Leftover is at http://{host}:{port}/", flush=True)
+    print(f"Hidden Objects is at http://{host}:{port}/", flush=True)
     server.serve_forever()
 
 

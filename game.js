@@ -2,8 +2,8 @@ const MISSES = 3;
 const PENALTY = 25;
 const FIND_POINTS = 100;
 const CLEAR_BONUS = 200;
-const BEST_KEY = "leftover-best";
-const CLEARS_KEY = "leftover-clears";
+const BEST_KEY = "hidden-objects-best";
+const CLEARS_KEY = "hidden-objects-clears";
 const FURNITURE = ["door", "chair", "rug", "crate", "bed"];
 const WALL_FINDS = new Set(["clock", "mirror", "frame"]);
 const WALL_CELLS = [0, 1, 2];
@@ -119,11 +119,11 @@ const voiceStatus = document.querySelector("#voice-status");
 const playStatus = document.querySelector("#play-status");
 const introSpeechEl = document.querySelector("#intro-speech");
 const INTRO_SPEECH = introSpeechEl ? introSpeechEl.textContent.trim() : "";
-const VOICE_KEY = "leftover-voice";
-const SOUND_KEY = "leftover-sound";
-const MUSIC_KEY = "leftover-music";
-const VOICE_LEVEL_KEY = "leftover-voice-level";
-const SOUND_LEVEL_KEY = "leftover-sound-level";
+const VOICE_KEY = "hidden-objects-voice";
+const SOUND_KEY = "hidden-objects-sound";
+const MUSIC_KEY = "hidden-objects-music";
+const VOICE_LEVEL_KEY = "hidden-objects-voice-level";
+const SOUND_LEVEL_KEY = "hidden-objects-sound-level";
 
 let score = 0;
 let streak = 0;
@@ -947,13 +947,22 @@ function prop(item, arriving, shifted) {
   return el;
 }
 
-function readNumber(key) {
+function kept(key) {
   try {
-    const value = Number(localStorage.getItem(key));
-    return Number.isFinite(value) && value > 0 ? value : 0;
+    const current = localStorage.getItem(key);
+    if (current !== null) return current;
+    const older = localStorage.getItem(key.replace(/^hidden-objects-/, "leftover-"));
+    if (older === null) return null;
+    localStorage.setItem(key, older);
+    return older;
   } catch {
-    return 0;
+    return null;
   }
+}
+
+function readNumber(key) {
+  const value = Number(kept(key));
+  return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 function writeNumber(key, value) {
@@ -965,11 +974,8 @@ function writeNumber(key, value) {
 }
 
 function prefOn(key) {
-  try {
-    return localStorage.getItem(key) !== "0";
-  } catch {
-    return true;
-  }
+  const value = kept(key);
+  return value !== "0";
 }
 
 function writePref(key, on) {
@@ -1255,7 +1261,7 @@ function audioContext() {
 
 function prefLevel(key, fallback) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = kept(key);
     if (raw === null || raw === "") return fallback;
     const value = Number(raw);
     if (!Number.isFinite(value)) return fallback;

@@ -1,4 +1,4 @@
-# Leftover
+# Hidden Objects
 
 A locked room in the browser. The narrator gives eight riddles. Each one points at a name that is missing from the picture. The right name still counts if you click it before the clue finishes, and the next clue starts at once. A wrong name only counts after the clue has been spoken. The last name is the key. Three wrong names and the door stays shut. There is no clock. Exit room returns to the intro.
 
@@ -74,7 +74,7 @@ Gradient is DigitalOcean's model platform. Serverless inference calls Gemma with
 
 1. Sign in at [cloud.digitalocean.com](https://cloud.digitalocean.com).
 2. Open **Gradient**, then **Serverless inference**, then **Model access keys**. The direct page is [Manage model access keys](https://docs.digitalocean.com/products/inference/how-to/manage-model-access-keys/).
-3. Choose **Create model access key**. Name it `leftover`.
+3. Choose **Create model access key**. Name it `hidden-objects`. The name on an existing key can stay.
 4. On **Foundation models**, choose **Select models** and pick **Gemma 4** (`gemma-4-31B-it`). Leave the other models off.
 5. Leave the VPC empty so Render can reach the public endpoint `https://inference.do-ai.run`.
 6. Create the key and copy the secret once. It is shown only then.
