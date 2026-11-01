@@ -5,6 +5,9 @@ const CLEAR_BONUS = 200;
 const BEST_KEY = "leftover-best";
 const CLEARS_KEY = "leftover-clears";
 const FURNITURE = ["door", "chair", "rug", "crate", "bed"];
+const WALL_FINDS = new Set(["clock", "mirror", "frame"]);
+const WALL_CELLS = [0, 1, 2];
+const FLOOR_CELLS = [4, 5, 6, 7, 8, 9, 10, 11];
 const CHAIN = [
   {
     id: "clock",
@@ -277,10 +280,12 @@ function begin() {
   endingReward.replaceChildren();
   const furniture = FURNITURE.map((id) => itemById(id));
   const placement = placeFurniture(furniture);
-  const empty = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].filter((cell) => !placement.has(cell));
+  const empty = FLOOR_CELLS.filter((cell) => !placement.has(cell));
   round = {
     placement,
     empty,
+    wallOpen: shuffle([...WALL_CELLS]),
+    doorSide: Math.random() < 0.5 ? "left" : "right",
     solved: false,
     shifted: "",
     concealed: new Set(),
@@ -319,6 +324,7 @@ function drawDecor() {
   layer.className = "decor";
   layer.setAttribute("aria-hidden", "true");
   layer.innerHTML = `
+    <svg class="bunting" viewBox="0 0 320 28" preserveAspectRatio="none" aria-hidden="true"><path d="M0 3h320" fill="none" stroke="#8a5a3c" stroke-width="2"/><path d="M8 4l10 18h-20z" fill="#e2a13a"/><path d="M40 4l10 18h-20z" fill="#6f5a78"/><path d="M72 4l10 18h-20z" fill="#c9856a"/><path d="M104 4l10 18h-20z" fill="#e2a13a"/><path d="M136 4l10 18h-20z" fill="#6f5a78"/><path d="M168 4l10 18h-20z" fill="#c9856a"/><path d="M200 4l10 18h-20z" fill="#e2a13a"/><path d="M232 4l10 18h-20z" fill="#6f5a78"/><path d="M264 4l10 18h-20z" fill="#c9856a"/><path d="M296 4l10 18h-20z" fill="#e2a13a"/></svg>
     <svg class="candle" viewBox="0 0 64 64" aria-hidden="true"><ellipse cx="32" cy="50" rx="14" ry="5" fill="#e2a13a" opacity="0.28"/><path d="M28 26h8v20h-8z" fill="#f7f1e6"/><path d="M24 46h16v6H24z" fill="#c9856a"/><path class="flame" d="M32 26c-5-8-2-14 0-18 2 4 5 10 0 18z" fill="#e2a13a"/></svg>
     <svg class="pumpkin" viewBox="0 0 64 64" aria-hidden="true"><path d="M30 16h4v6h-4z" fill="#6f9a78"/><path d="M34 12h6v4h-6z" fill="#6f9a78"/><path d="M20 28h8v22h-8z" fill="#c9856a"/><path d="M28 24h8v28h-8z" fill="#e2a13a"/><path d="M36 28h8v22h-8z" fill="#c9856a"/><path d="M26 34h3v3h-3zM35 34h3v3h-3zM29 42h8v2h-8z" fill="#5c3a28"/></svg>`;
   roomEl.append(layer);
@@ -428,14 +434,21 @@ function objectFor(id) {
 }
 
 function placeFurniture(furniture) {
-  const rug = furniture.find((item) => item.id === "rug");
-  const others = furniture.filter((item) => item.id !== "rug");
-  const rugCell = shuffle([8, 9, 10, 11])[0];
-  const rest = shuffle([1, 2, 5, 6, 9, 10].filter((cell) => cell !== rugCell)).slice(0, others.length);
   const placement = new Map();
-  if (rug) placement.set(rugCell, rug);
-  others.forEach((item, index) => placement.set(rest[index], item));
+  const standing = furniture.filter((item) => item.id === "bed" || item.id === "chair" || item.id === "crate");
+  const rug = furniture.find((item) => item.id === "rug");
+  const back = shuffle([4, 5, 6, 7]);
+  standing.forEach((item, index) => placement.set(back[index], item));
+  if (rug) placement.set(shuffle([8, 9, 10, 11])[0], rug);
   return placement;
+}
+
+function drawDoor() {
+  if (!round || round.concealed.has("door")) return;
+  const stand = document.createElement("div");
+  stand.className = `door-stand ${round.doorSide === "right" ? "right" : "left"}`;
+  stand.innerHTML = door();
+  roomEl.append(stand);
 }
 
 function drawBlank() {
@@ -453,12 +466,13 @@ function drawRoom(extra) {
   roomEl.replaceChildren();
   for (let cell = 0; cell < 12; cell += 1) {
     const slot = document.createElement("div");
-    slot.className = "cell";
+    slot.className = WALL_CELLS.includes(cell) ? "cell hang" : cell >= 8 ? "cell ground front" : "cell ground";
     const item = round.placement.get(cell) || (extra && extra.cell === cell ? extra.item : null);
     const hidden = item && round.concealed.has(item.id);
     if (item && !hidden) slot.append(prop(item, extra && extra.item === item, round.shifted === item.id));
     roomEl.append(slot);
   }
+  drawDoor();
   const sconce = document.createElement("div");
   sconce.className = "sconce";
   sconce.setAttribute("aria-hidden", "true");
@@ -594,7 +608,7 @@ function choose(item, button) {
   stopVoice();
   clearTimeout(agentTimer);
   round.locked.delete(item.id);
-  const cell = round.empty.shift();
+  const cell = WALL_FINDS.has(item.id) ? round.wallOpen.shift() : item.id === "key" ? undefined : round.empty.shift();
   if (cell !== undefined) round.placement.set(cell, item);
   foundRooms += 1;
   streak += 1;
@@ -772,17 +786,28 @@ function paintEyes() {
 }
 
 function agentShift() {
-  const cells = [...round.placement.keys()];
-  if (!cells.length || !round.empty.length) return null;
+  const cells = [...round.placement.keys()].filter((cell) => {
+    const item = round.placement.get(cell);
+    return round.empty.some((spot) => cellsFor(item.id).includes(spot));
+  });
+  if (!cells.length) return null;
   const from = cells[Math.floor(Math.random() * cells.length)];
   const item = round.placement.get(from);
-  const toIndex = Math.floor(Math.random() * round.empty.length);
-  const to = round.empty[toIndex];
+  const allowed = round.empty.filter((spot) => cellsFor(item.id).includes(spot));
+  if (!allowed.length) return null;
+  const to = allowed[Math.floor(Math.random() * allowed.length)];
+  const toIndex = round.empty.indexOf(to);
   round.placement.delete(from);
   round.placement.set(to, item);
   round.empty[toIndex] = from;
   round.shifted = item.id;
   return item;
+}
+
+function cellsFor(id) {
+  if (WALL_FINDS.has(id)) return WALL_CELLS;
+  if (id === "door" || id === "key") return [];
+  return FLOOR_CELLS;
 }
 
 function touchRoom() {
@@ -848,6 +873,7 @@ function finish(cleared) {
 function prop(item, arriving, shifted) {
   const el = document.createElement("div");
   el.className = ["prop", arriving ? "arrive" : "", shifted ? "shifted" : ""].filter(Boolean).join(" ");
+  el.dataset.id = item.id;
   el.innerHTML = item.svg();
   return el;
 }
