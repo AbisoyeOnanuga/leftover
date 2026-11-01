@@ -116,6 +116,7 @@ const musicBox = document.querySelector("#set-music");
 const voiceLevel = document.querySelector("#voice-level");
 const soundLevel = document.querySelector("#sound-level");
 const voiceStatus = document.querySelector("#voice-status");
+const playStatus = document.querySelector("#play-status");
 const introSpeechEl = document.querySelector("#intro-speech");
 const INTRO_SPEECH = introSpeechEl ? introSpeechEl.textContent.trim() : "";
 const VOICE_KEY = "leftover-voice";
@@ -373,14 +374,14 @@ function drawDecor() {
   flagPieces.forEach(([from, to]) => {
     const sag = 18;
     wires.push(`<path d="M${from} 40 Q${((from + to) / 2).toFixed(1)} ${40 + sag} ${to} 40" fill="none" stroke="#8a5a3c" stroke-width="1.5"/>`);
-    const steps = Math.max(2, Math.round((to - from) / 70));
+    const steps = Math.max(2, Math.round((to - from) / 110));
     for (let i = 0; i <= steps; i += 1) {
       const [x, y] = curvePoint(i / steps, [from, 40], [(from + to) / 2, 40 + sag], [to, 40]);
-      flags.push(`<path d="M${x.toFixed(1)} ${y.toFixed(1)} l3.2 7 h-6.4 z" fill="${flagColors[i % flagColors.length]}"/>`);
+      flags.push(`<path d="M${x.toFixed(1)} ${y.toFixed(1)} l6 13 h-12 z" fill="${flagColors[i % flagColors.length]}"/>`);
     }
   });
   layer.innerHTML = `
-    <svg class="garland" viewBox="0 0 1000 92" aria-hidden="true">
+    <svg class="garland" viewBox="0 0 1000 100" aria-hidden="true">
       ${wires.join("")}
       ${bulbs.join("")}
       ${flags.join("")}
@@ -1112,23 +1113,42 @@ function panStep(now) {
 }
 
 function paintVoiceStatus() {
-  if (!voiceStatus) return;
-  fetch("/voice").then((response) => response.json()).then((data) => {
+  const show = (settingsText, introText) => {
+    if (voiceStatus) voiceStatus.textContent = settingsText;
+    if (!playStatus) return;
+    playStatus.hidden = !introText;
+    playStatus.textContent = introText || "";
+  };
+  fetch("/voice").then((response) => (response.ok ? response.json() : Promise.reject())).then((data) => {
+    const notes = [];
+    const missing = [];
     if (!data.ready) {
-      voiceStatus.textContent = "Voice is off until .env has an API key and a voice id, then restart the server.";
-      return;
+      notes.push("Voice is off. Paste an ElevenLabs key and a voice id into .env, then restart the server. The lines stay on screen.");
+      missing.push("Voice is off, so the lines stay on screen.");
+    } else if (data.error === "401" || data.error === "key-id") {
+      notes.push("ElevenLabs rejected that value. Paste the secret key shown when the key was created, not the key id from the list, then restart the server.");
+      missing.push("Voice was rejected. The lines stay on screen.");
+    } else if (data.error) {
+      notes.push("Voice is not speaking yet. Check the key and restart the server. The lines stay on screen.");
+      missing.push("Voice is not speaking. The lines stay on screen.");
+    } else {
+      notes.push("Voice is ready. The narrator starts when the intro appears.");
     }
-    if (data.error === "401" || data.error === "key-id") {
-      voiceStatus.textContent = "ElevenLabs rejected that value. Paste the secret key shown when the key was created, not the key id from the list, then restart the server.";
-      return;
+    if (data.modelReady && data.modelSource === "digitalocean") {
+      notes.push("Gemma is answering from DigitalOcean.");
+    } else if (data.modelReady) {
+      notes.push("Gemma is running on this machine.");
+    } else {
+      const modelNote = data.modelError || "Gemma is not available. The written order is playing.";
+      notes.push(modelNote);
+      missing.push(modelNote);
     }
-    if (data.error) {
-      voiceStatus.textContent = "Voice is not speaking yet. Check the key and restart the server.";
-      return;
-    }
-    voiceStatus.textContent = "Voice is ready. The narrator starts when the intro appears.";
+    show(notes.join(" "), missing.join(" "));
   }).catch(() => {
-    voiceStatus.textContent = "";
+    show(
+      "No voice server on this page. The written riddles still play.",
+      "No voice server on this page. The written riddles still play."
+    );
   });
 }
 

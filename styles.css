@@ -216,7 +216,7 @@ main {
 }
 
 .decor { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
-.garland { position: absolute; left: 2%; top: 5%; width: 94%; height: auto; aspect-ratio: 1000 / 92; overflow: visible; }
+.garland { position: absolute; left: 2%; top: 5%; width: 94%; height: auto; aspect-ratio: 1000 / 100; overflow: visible; }
 .garland .glow { opacity: 0.72; }
 .garland .lamp-bulb { filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 6px currentColor); }
 .room.lamp-lit .garland .glow { opacity: 0.5; }

@@ -44,6 +44,7 @@ SYSTEM = (
     "Do not name an object. Do not give the answer to the riddle."
 )
 VOICE = {"error": ""}
+MODEL = {"error": "", "source": "off"}
 
 
 def load_env():
@@ -161,11 +162,48 @@ def variation_ok(line, forbidden, source):
     return True
 
 
-def gemma(user, system=None, temperature=0.7):
-    # Blank OLLAMA_URL means the public local Ollama port, not an account host.
+def gemma_id(name, fallback):
+    text = (name or fallback).strip()
+    if "gemma" not in text.lower():
+        return fallback
+    return text
+
+
+def gemma_cloud(user, system, temperature):
+    # The id stays a Gemma model. Another family would drop the Gemma entry.
+    model = gemma_id(os.environ.get("DO_MODEL"), "gemma-4-31B-it")
+    key = env_value("DO_INFERENCE_KEY")
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system or SYSTEM},
+            {"role": "user", "content": user},
+        ],
+        "temperature": temperature,
+        "max_tokens": 90,
+    }
+    request = urllib.request.Request(
+        "https://inference.do-ai.run/v1/chat/completions",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    message = (payload.get("choices") or [{}])[0].get("message") or {}
+    content = message.get("content") or ""
+    if isinstance(content, list):
+        content = " ".join(part.get("text", "") for part in content if isinstance(part, dict))
+    return parse_json(content), content
+
+
+def gemma_local(user, system, temperature):
+    model = gemma_id(os.environ.get("OLLAMA_MODEL"), "gemma3:4b")
     url = (env_value("OLLAMA_URL") or "http://127.0.0.1:11434").rstrip("/") + "/api/chat"
     body = {
-        "model": os.environ.get("OLLAMA_MODEL", "gemma3:4b"),
+        "model": model,
         "stream": False,
         "format": "json",
         "keep_alive": "30m",
@@ -184,6 +222,64 @@ def gemma(user, system=None, temperature=0.7):
         payload = json.loads(response.read().decode("utf-8"))
     content = payload.get("message", {}).get("content", "")
     return parse_json(content), content
+
+
+def gemma(user, system=None, temperature=0.7):
+    if env_value("DO_INFERENCE_KEY"):
+        try:
+            parsed, raw = gemma_cloud(user, system, temperature)
+            MODEL["error"] = ""
+            MODEL["source"] = "digitalocean"
+            return parsed, raw
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, KeyError, IndexError):
+            MODEL["error"] = "DigitalOcean Gemma did not answer. "
+    try:
+        parsed, raw = gemma_local(user, system, temperature)
+        MODEL["error"] = ""
+        MODEL["source"] = "ollama"
+        return parsed, raw
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        MODEL["source"] = "off"
+        MODEL["error"] = (MODEL.get("error") or "") + "Gemma is not running here. The written order is playing."
+        raise
+
+
+PROBE = {"at": 0, "ready": False, "source": "off", "error": ""}
+
+
+def describe_model():
+    if env_value("DO_INFERENCE_KEY"):
+        name = gemma_id(os.environ.get("DO_MODEL"), "gemma-4-31B-it")
+        return {
+            "ready": not MODEL.get("error"),
+            "source": "digitalocean",
+            "error": MODEL.get("error") or "",
+            "name": name,
+        }
+    now = time.time()
+    if now - PROBE["at"] > 20:
+        model = gemma_id(os.environ.get("OLLAMA_MODEL"), "gemma3:4b")
+        url = (env_value("OLLAMA_URL") or "http://127.0.0.1:11434").rstrip("/") + "/api/tags"
+        ready = False
+        error = "Gemma is not running. The written order is playing."
+        try:
+            with urllib.request.urlopen(url, timeout=1.5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            names = [item.get("name", "") for item in payload.get("models") or [] if isinstance(item, dict)]
+            stem = model.split(":")[0]
+            ready = any(stem in item for item in names)
+            error = "" if ready else "That Gemma model is not installed. The written order is playing."
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+            ready = False
+        PROBE.update(at=now, ready=ready, source="ollama" if ready else "off", error=error)
+    if MODEL.get("error"):
+        return {"ready": False, "source": "off", "error": MODEL["error"], "name": "gemma3:4b"}
+    return {
+        "ready": PROBE["ready"],
+        "source": PROBE["source"],
+        "error": PROBE["error"],
+        "name": gemma_id(os.environ.get("OLLAMA_MODEL"), "gemma3:4b"),
+    }
 
 
 def prompt_for(event, names, allowed_ids, source=""):
@@ -412,9 +508,14 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("", "/"):
             path = "/index.html"
         if path == "/voice":
+            model = describe_model()
             payload = {
                 "ready": bool(env_value("ELEVENLABS_API_KEY") and env_value("ELEVENLABS_VOICE_ID")),
                 "error": VOICE.get("error") or "",
+                "modelReady": bool(model.get("ready")),
+                "modelSource": model.get("source") or "off",
+                "modelError": model.get("error") or "",
+                "modelName": model.get("name") or "",
             }
             data = json.dumps(payload).encode("utf-8")
             self.send_response(200)
@@ -488,8 +589,10 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     load_env()
     threading.Thread(target=warmup, daemon=True).start()
-    server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)
-    print("Leftover is at http://127.0.0.1:8765/", flush=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8765"))
+    server = ThreadingHTTPServer((host, port), Handler)
+    print(f"Leftover is at http://{host}:{port}/", flush=True)
     server.serve_forever()
 
 
